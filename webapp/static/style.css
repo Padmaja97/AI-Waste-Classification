@@ -129,8 +129,8 @@ p{ margin:0; }
    and lets the fan-out breathe in the empty right half */
 .hero__canvas{
   position:absolute; inset:0; width:100%; height:100%; z-index:0; opacity:.9;
-  -webkit-mask-image:linear-gradient(90deg, transparent 0%, rgba(0,0,0,.22) 26%, #000 58%);
-          mask-image:linear-gradient(90deg, transparent 0%, rgba(0,0,0,.22) 26%, #000 58%);
+  -webkit-mask-image:linear-gradient(90deg, transparent 0%, rgba(0,0,0,.28) 18%, #000 42%);
+          mask-image:linear-gradient(90deg, transparent 0%, rgba(0,0,0,.28) 18%, #000 42%);
 }
 @media (max-width:900px){ .hero__canvas{ opacity:.5; } }
 .hero__inner{ position:relative; z-index:2; max-width:var(--max); margin:0 auto; }
@@ -591,6 +591,98 @@ kbd{ font-family:var(--m); font-size:.76em; background:var(--panel-2); border:1p
 .toast.is-up{ transform:translate(-50%,0); }
 .toast[data-kind="warn"]{ border-color:#4A3A1E; }
 .toast[data-kind="warn"]::before{ content:''; display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--signal); margin-right:.55rem; vertical-align:middle; }
+
+/* ═══════════ PROVENANCE & SCOPE ═══════════
+   These carry the honesty of the page: what the model can do, and
+   where every number came from. They are content, not decoration. */
+
+.scope{
+  display:flex; align-items:flex-start; gap:.9rem; max-width:60ch;
+  margin:1.6rem 0 0; padding:.9rem 1.1rem;
+  border:1px solid var(--line-2); border-left:2px solid var(--organic);
+  border-radius:3px; background:var(--panel);
+  font-size:.9rem; color:var(--ink-2);
+}
+.scope__n{
+  flex:0 0 auto; font-family:var(--d); font-weight:800; font-size:1.9rem;
+  line-height:1; color:var(--organic); letter-spacing:-.04em;
+}
+.scope__t b{ font-weight:600; }
+
+.cite{ font-size:.62em; }
+.cite a{ color:var(--muted); text-decoration:none; padding:0 .1em; }
+.cite a:hover{ color:var(--organic); }
+
+.readout__src{
+  margin:.7rem 0 0; font-size:.7rem; color:var(--faint); letter-spacing:.01em;
+}
+.readout[data-state="empty"] dd{ color:var(--faint); }
+
+.prov{
+  display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+  max-width:var(--max); margin:0 auto; padding:.85rem var(--gut);
+  border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+  font-size:.86rem;
+}
+.prov__flag{
+  flex:0 0 auto; font-family:var(--m); font-size:.62rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.14em; padding:.28rem .65rem; border-radius:2px;
+}
+.prov__text{ flex:1 1 380px; color:var(--ink-2); }
+.prov__when{ font-size:.7rem; color:var(--faint); white-space:nowrap; }
+
+.prov[data-kind="quick"]{ background:var(--signal-wash); border-color:#4A3A1E; }
+.prov[data-kind="quick"] .prov__flag{ background:var(--signal); color:#1A1206; }
+.prov[data-kind="full"]{ background:var(--organic-wash); border-color:var(--organic-dim); }
+.prov[data-kind="full"] .prov__flag{ background:var(--organic); color:#06100B; }
+.prov[data-kind="none"]{ background:var(--panel); }
+.prov[data-kind="none"] .prov__flag{ background:var(--line-2); color:var(--muted); }
+
+.sec__caveat{
+  margin-top:.9rem !important; padding:.7rem .95rem;
+  border-left:2px solid var(--signal); background:var(--signal-wash);
+  border-radius:0 3px 3px 0; font-size:.88rem !important; color:var(--ink-2) !important;
+}
+.sec__caveat b{ color:var(--ink); font-weight:600; }
+
+.intake__note{
+  font-size:.79rem; color:var(--muted); line-height:1.55;
+  border-top:1px solid var(--line); padding-top:.85rem;
+}
+
+.inline{
+  font-family:var(--m); font-size:.88em; padding:.1em .4em;
+  background:var(--panel-2); border:1px solid var(--line-2); border-radius:2px; color:var(--ink-2);
+}
+
+.plot__empty, .ctable .empty td{
+  font-family:var(--m); font-size:.8rem; color:var(--faint);
+  text-align:center; padding:2.5rem 1rem;
+}
+.thsub{ display:block; font-size:.85em; opacity:.7; letter-spacing:.08em; margin-top:.1rem; }
+
+/* legend colour comes from the series, not a fixed class */
+.legend__k[style*="--lc"]::before{ background:var(--lc); }
+
+/* a third gap state: partly addressed */
+.gap__pill[data-st="partial"]{ background:var(--signal-wash); color:var(--signal); border:1px solid #4A3A1E; }
+.gap[data-status="partial"]{ background:linear-gradient(90deg,var(--signal-wash),transparent 42%); }
+.gap__todo{
+  color:var(--ink-2) !important; border-left:2px solid var(--line-2);
+  margin-left:1.25rem !important; padding-left:1rem !important;
+}
+.gap__todo b{ color:var(--signal); font-weight:600; }
+
+.foot__refs{
+  margin:0; padding:0 0 0 1.1rem; text-align:left;
+  font-size:.78rem; color:var(--faint); line-height:1.75; max-width:46ch;
+}
+.foot__refs cite{ font-style:italic; }
+
+@media (max-width:640px){
+  .scope{ flex-direction:column; gap:.5rem; }
+  .prov__when{ width:100%; }
+}
 
 /* ═══════════ REVEAL (from a visible resting state) ═══════════ */
 .will-lift{ transition:transform .6s var(--ease), opacity .6s var(--ease); }

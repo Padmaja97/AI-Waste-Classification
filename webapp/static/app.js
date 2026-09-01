@@ -48,7 +48,7 @@ function initSorter() {
     W = r.width; H = r.height;
     cv.width = W * DPR; cv.height = H * DPR;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    gateX = W * 0.60;              // gate sits in the open right half
+    gateX = W * 0.54;              // gate sits in the open right half
   }
 
   function spawn() {
@@ -56,7 +56,7 @@ function initSorter() {
     return {
       x: -20,
       y: H * (0.34 + Math.random() * 0.32), // wider intake band
-      vx: 0.9 + Math.random() * 1.1,
+      vx: 1.7 + Math.random() * 1.6,
       vy: 0,
       r: 1.8 + Math.random() * 2.8,
       organic,
@@ -82,16 +82,16 @@ function initSorter() {
 
       if (!p.sorted && p.x >= gateX) {
         p.sorted = true;
-        p.vy = (p.organic ? -1 : 1) * (0.42 + Math.random() * 0.72);
+        p.vy = (p.organic ? -1 : 1) * (0.34 + Math.random() * 0.6);
       }
       p.x += p.vx;
       p.y += p.vy;
-      if (p.sorted) p.life -= 0.006;
+      if (p.sorted) p.life -= 0.0032;
 
       if (p.x > W + 30 || p.life <= 0) { items.splice(i, 1); continue; }
 
-      const col = p.sorted ? (p.organic ? C.organic : C.recycle) : C.faint;
-      const a = p.sorted ? Math.max(0, p.life) * 0.95 : 0.62;
+      const col = p.sorted ? (p.organic ? C.organic : C.recycle) : C.muted;
+      const a = p.sorted ? Math.max(0, p.life) * 0.95 : 0.55;
 
       // trail
       ctx.strokeStyle = col;
@@ -114,20 +114,29 @@ function initSorter() {
     raf = requestAnimationFrame(step);
   }
 
+  function seed(n) {
+    for (let i = 0; i < n; i++) {
+      const p = spawn();
+      p.x = Math.random() * W;
+      if (p.x > gateX) {
+        p.sorted = true;
+        p.vy = (p.organic ? -1 : 1) * (0.34 + Math.random() * 0.6);
+        p.y += p.vy * ((p.x - gateX) / p.vx);
+        p.life = Math.max(0.15, 1 - ((p.x - gateX) / p.vx) * 0.0032);
+      }
+      items.push(p);
+    }
+  }
+
   size();
   addEventListener('resize', size, { passive: true });
 
   if (REDUCED) {
     // one still frame, no motion
-    for (let i = 0; i < 220; i++) {
-      const p = spawn();
-      p.x = Math.random() * W;
-      if (p.x > gateX) { p.sorted = true; p.y += (p.organic ? -1 : 1) * (p.x - gateX) * 0.42; }
-      items.push(p);
-    }
+    seed(220);
     ctx.clearRect(0, 0, W, H);
     items.forEach(p => {
-      ctx.fillStyle = p.sorted ? (p.organic ? C.organic : C.recycle) : C.faint;
+      ctx.fillStyle = p.sorted ? (p.organic ? C.organic : C.recycle) : C.muted;
       ctx.globalAlpha = 0.62;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
     });
@@ -137,7 +146,7 @@ function initSorter() {
 
   // pause when off-screen — no wasted frames
   const io = new IntersectionObserver(([e]) => {
-    if (e.isIntersecting) { if (!raf) raf = requestAnimationFrame(step); }
+    if (e.isIntersecting) { if (!raf) { if (!items.length) seed(130); raf = requestAnimationFrame(step); } }
     else { cancelAnimationFrame(raf); raf = null; }
   }, { threshold: 0 });
   io.observe(cv);
@@ -151,12 +160,12 @@ function initCounters() {
   const run = el => {
     const target = parseFloat(el.dataset.count);
     const dp = parseInt(el.dataset.dp, 10) || 0;
-    if (REDUCED) { el.textContent = target.toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: dp }); return; }
+    if (REDUCED) { el.textContent = target.toLocaleString('en-GB', { minimumFractionDigits: dp, maximumFractionDigits: dp }); return; }
     const t0 = performance.now(), dur = 1150;
     const tick = now => {
       const k = Math.min(1, (now - t0) / dur);
       const eased = 1 - Math.pow(1 - k, 3);
-      el.textContent = (target * eased).toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+      el.textContent = (target * eased).toLocaleString('en-GB', { minimumFractionDigits: dp, maximumFractionDigits: dp });
       if (k < 1) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -190,68 +199,266 @@ function initReveal() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   3 · Validation-accuracy chart (real numbers from the run)
+   3 · Measurements
+   Every figure on this page is read from /api/metrics, which serves
+   outputs/eval_report.json. Nothing here is hardcoded — if a number
+   has not been measured, the page says so instead of inventing one.
    ───────────────────────────────────────────────────────────── */
-const RUN = {
-  mobilenet: [
-    { ep: 1, phase: 'head', trainAcc: .8220, valAcc: .8838, trainLoss: .3893, valLoss: .3083 },
-    { ep: 2, phase: 'head', trainAcc: .8880, valAcc: .8237, trainLoss: .2847, valLoss: .3904 },
-    { ep: 3, phase: 'ft',   trainAcc: .8905, valAcc: .8925, trainLoss: .2724, valLoss: .2565 },
-  ],
-  resnet: [
-    { ep: 1, phase: 'head', trainAcc: .8205, valAcc: .8500, trainLoss: .3970, valLoss: .3506 },
-    { ep: 2, phase: 'head', trainAcc: .8650, valAcc: .8512, trainLoss: .3159, valLoss: .3311 },
-    { ep: 3, phase: 'ft',   trainAcc: .8715, valAcc: .8788, trainLoss: .3219, valLoss: .3113 },
-  ],
-};
+const M = { report: null, history: null };
 
+const pct  = v => (v * 100).toFixed(2);
+// thousands grouping, not lakh/crore — parameter counts are read against papers
+const num  = v => v.toLocaleString('en-US');
+const DASH = '—';
+
+async function loadMetrics() {
+  try {
+    const r = await fetch('/api/metrics');
+    const j = await r.json();
+    M.report = j && j.available ? j : null;
+  } catch { M.report = null; }
+
+  try {
+    const r = await fetch('/api/training-history');
+    if (r.ok) {
+      const j = await r.json();
+      M.history = j && j.available !== false ? j : null;
+    }
+  } catch { M.history = null; }
+
+  if (!M.report) { showNoData(); return; }
+  paintReadout();
+  paintProvenance();
+  paintComparison();
+  paintConfusion();
+  paintPerClass();
+  paintSpecs();
+  paintGap3();
+  drawCurves();
+}
+
+function showNoData() {
+  const msg = 'No evaluation report found. Run: python -m src.evaluate';
+  $('#readoutSrc').textContent = msg;
+  $('#readout').dataset.state = 'empty';
+  $('#cmpBody').innerHTML = `<tr class="empty"><td colspan="7">${msg}</td></tr>`;
+  $('#curvePlot').innerHTML = `<p class="plot__empty">${msg}</p>`;
+  $('#cmFoot').textContent = msg;
+  $('#pcm').innerHTML = `<p class="plot__empty">${msg}</p>`;
+  const prov = $('#prov');
+  prov.hidden = false;
+  prov.dataset.kind = 'none';
+  $('#provFlag').textContent = 'no data';
+  $('#provText').textContent = 'This page shows measurements only. None have been recorded yet — run the evaluation to populate it.';
+}
+
+function paintReadout() {
+  const rep = M.report;
+  const best = rep.models.find(m => m.name === rep.best) || rep.models[0];
+  const total = rep.dataset ? (rep.dataset.train.total + rep.dataset.test.total) : null;
+
+  $('#mAcc').textContent  = pct(best.accuracy);
+  $('#mAccBar').style.setProperty('--w', pct(best.accuracy) + '%');
+
+  $('#mImgs').textContent = total != null ? num(total) : DASH;
+  $('#heroCount').textContent = total != null ? num(total) : 'countless';
+  $('#refCount').textContent  = total != null ? num(total) : DASH;
+
+  $('#mLat').textContent  = best.latency.median_ms.toFixed(1);
+  $('#mLatBar').style.setProperty('--w', Math.min(100, best.latency.median_ms / 2) + '%');
+
+  $('#mSize').textContent = best.size_mb.toFixed(2);
+  $('#mSizeBar').style.setProperty('--w', Math.min(100, best.size_mb) + '%');
+
+  $('#scopeN').textContent = rep.num_classes;
+
+  $('#readout').dataset.state = 'ok';
+  $('#readoutSrc').textContent =
+    `${best.name} · median of ${best.latency.runs} timed forward passes on ${best.latency.device} · ` +
+    `${rep.evaluation.test_images_used} test images`;
+}
+
+function paintProvenance() {
+  const rep = M.report, run = rep.run, prov = $('#prov');
+  prov.hidden = false;
+  prov.dataset.kind = run.quick_mode ? 'quick' : 'full';
+  $('#provFlag').textContent = run.quick_mode ? 'QUICK mode' : 'full run';
+  $('#provText').textContent = run.quick_mode
+    ? `Subset run — ${num(run.train_subset)} training and ${num(run.test_subset)} test images at `
+      + `${run.transfer_input_size}px, ${run.epochs_head}+${run.epochs_finetune} epochs on ${run.device}. `
+      + `These are not full-dataset results and should be labelled as such in any report.`
+    : `Full training set, full test set, ${run.transfer_input_size}px, `
+      + `${run.epochs_head}+${run.epochs_finetune} epochs on ${run.device}.`;
+  $('#provWhen').textContent = new Date(rep.generated_at).toLocaleString('en-GB', {
+    dateStyle: 'medium', timeStyle: 'short',
+  });
+}
+
+function paintComparison() {
+  const rep = M.report;
+  const top = Math.max(...rep.models.map(m => m.accuracy));
+  const swatch = { baseline: 'n', mobilenet: 'o', resnet: 'r' };
+
+  $('#cmpBody').innerHTML = rep.models.map(m => `
+    <tr class="${m.name === rep.best ? 'is-pick' : ''}">
+      <th scope="row">${m.name}<span class="tnote">${m.input_size}px input</span></th>
+      <td class="mono">${num(m.params)}</td>
+      <td class="mono">${m.size_mb.toFixed(2)} MB</td>
+      <td class="mono">${pct(m.accuracy)}%</td>
+      <td class="mono">${m.f1.toFixed(4)}</td>
+      <td class="mono">${m.latency.median_ms.toFixed(1)} ms</td>
+      <td><div class="tbar"><i style="--w:${(m.accuracy / top * 100).toFixed(1)}%" data-s="${swatch[m.key] || 'n'}"></i></div></td>
+    </tr>`).join('');
+}
+
+function paintConfusion() {
+  const rep = M.report;
+  const best = rep.models.find(m => m.name === rep.best) || rep.models[0];
+  const cm = best.confusion;                       // [[TL, TR], [BL, BR]]
+  const rowO = cm[0][0] + cm[0][1], rowR = cm[1][0] + cm[1][1];
+
+  const put = (id, v, denom) => {
+    const el = $('#' + id);
+    const frac = denom ? v / denom : 0;
+    el.style.setProperty('--i', frac.toFixed(3));
+    el.querySelector('b').textContent = v;
+    el.querySelector('small').textContent = denom ? (frac * 100).toFixed(0) + '%' : '';
+  };
+  put('cmTL', cm[0][0], rowO); put('cmTR', cm[0][1], rowO);
+  put('cmBL', cm[1][0], rowR); put('cmBR', cm[1][1], rowR);
+
+  $('#cmSub').textContent = `${best.name} · n=${rowO + rowR}`;
+
+  const worst = cm[1][0] >= cm[0][1]
+    ? `${cm[1][0]} recyclable items were sent to the wet stream`
+    : `${cm[0][1]} organic items were sent to the dry stream`;
+  $('#cmFoot').textContent = `${worst} — the model's largest error mode, and where the next round of training should go.`;
+}
+
+function paintPerClass() {
+  const rep = M.report;
+  const best = rep.models.find(m => m.name === rep.best) || rep.models[0];
+  const key = { Organic: 'o', Recyclable: 'r' };
+
+  $('#pcm').innerHTML = Object.entries(best.per_class).map(([name, v]) => `
+    <div class="pcm__group" data-s="${key[name] || 'o'}">
+      <p class="pcm__name">${name} <span class="mono">n=${v.support}</span></p>
+      ${[['P', v.precision], ['R', v.recall], ['F1', v.f1]].map(([lbl, val]) => `
+      <div class="pcm__row">
+        <span>${lbl}</span>
+        <div class="pcm__track"><i style="--w:${(val * 100).toFixed(2)}%"></i></div>
+        <b class="mono">${val.toFixed(4)}</b>
+      </div>`).join('')}
+    </div>`).join('');
+
+  const o = best.per_class.Organic, r = best.per_class.Recyclable;
+  if (o && r) {
+    $('#pcmFoot').textContent =
+      `Organic recall ${o.recall.toFixed(2)} vs recyclable recall ${r.recall.toFixed(2)}: `
+      + `the model finds organic items more reliably than recyclable ones.`;
+  }
+}
+
+function paintSpecs() {
+  const rep = M.report;
+  const base = rep.models.find(m => m.key === 'baseline');
+  $('#specBatch').textContent = rep.run.batch_size ?? DASH;
+  $('#specParams').textContent = base ? (base.params / 1e6).toFixed(2) + ' M' : DASH;
+}
+
+function paintGap3() {
+  const rep = M.report;
+  const mob = rep.models.find(m => m.key === 'mobilenet');
+  const base = rep.models.find(m => m.key === 'baseline');
+  if (!mob) return;
+
+  const smaller = base ? Math.round((1 - mob.params / base.params) * 100) : null;
+  $('#g3Text').innerHTML =
+    `fine-tuned MobileNetV2 to <span class="mono">${pct(mob.accuracy)}%</span> at `
+    + `<span class="mono">${(mob.params / 1e6).toFixed(2)} M</span> parameters and `
+    + `<span class="mono">${mob.size_mb.toFixed(2)} MB</span>`
+    + (smaller != null ? ` — ${smaller}% fewer parameters than the baseline CNN` : '')
+    + `, at a measured <span class="mono">${mob.latency.median_ms.toFixed(1)} ms</span> per image on `
+    + `${mob.latency.device}.`;
+
+  $('#g3Caveat').textContent = rep.run.quick_mode
+    ? `these figures come from a ${num(rep.run.train_subset)}-image subset run, not full-dataset training.`
+    : `measured on this machine only; other hardware will differ.`;
+}
+
+/* ── validation-accuracy chart, drawn from the recorded history ── */
 function drawCurves() {
   const host = $('#curvePlot');
   if (!host) return;
 
+  const hist = M.history;
+  if (!hist) {
+    host.innerHTML = '<p class="plot__empty">No training history found. Run: python -m src.train</p>';
+    return;
+  }
+
+  const series = Object.entries(hist)
+    .filter(([, v]) => v && Array.isArray(v.val_acc) && v.val_acc.length)
+    .map(([k, v]) => ({
+      key: k,
+      label: k === 'mobilenet' ? 'MobileNetV2' : k === 'resnet' ? 'ResNet18' : k,
+      colour: k === 'mobilenet' ? C.organic : k === 'resnet' ? C.recycle : C.muted,
+      vals: v.val_acc,
+    }));
+
+  if (!series.length) {
+    host.innerHTML = '<p class="plot__empty">Training history is empty.</p>';
+    return;
+  }
+
+  $('#curveLegend').innerHTML = series
+    .map(s => `<span class="legend__k" style="--lc:${s.colour}">${s.label}</span>`).join('');
+
+  const nEp = Math.max(...series.map(s => s.vals.length));
+  const all = series.flatMap(s => s.vals);
+  // pad the band so the extremes are not glued to the frame
+  const lo = Math.max(0, Math.floor((Math.min(...all) - 0.02) * 50) / 50);
+  const hi = Math.min(1, Math.ceil((Math.max(...all) + 0.02) * 50) / 50);
+
   const W = 720, H = 268;
-  const m = { t: 18, r: 54, b: 40, l: 46 };          // room for the outermost labels
+  const m = { t: 18, r: 62, b: 40, l: 50 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const X = i => m.l + (nEp === 1 ? iw / 2 : (i / (nEp - 1)) * iw);
+  const Y = v => m.t + (1 - (v - lo) / (hi - lo)) * ih;
 
-  const yMin = .80, yMax = .90;                       // the band the data actually occupies
-  const X = ep => m.l + ((ep - 1) / 2) * iw;
-  const Y = v  => m.t + (1 - (v - yMin) / (yMax - yMin)) * ih;
+  const ticks = [];
+  const stepCount = 5;
+  for (let i = 0; i <= stepCount; i++) ticks.push(lo + (hi - lo) * (i / stepCount));
 
-  const path = rows => rows.map((d, i) => `${i ? 'L' : 'M'}${X(d.ep).toFixed(1)},${Y(d.valAcc).toFixed(1)}`).join(' ');
+  // where the fine-tune phase begins, if the run recorded one
+  const headEp = M.report?.run?.epochs_head ?? null;
+  const marker = headEp && headEp < nEp
+    ? `<line x1="${X(headEp - 0.5).toFixed(1)}" y1="${m.t}" x2="${X(headEp - 0.5).toFixed(1)}" y2="${m.t + ih}"
+             stroke="${C.signal}" stroke-width="1" stroke-dasharray="3 5" opacity=".55"/>
+       <text x="${(X(headEp - 0.5) + 7).toFixed(1)}" y="${m.t + 13}" fill="${C.signal}"
+             font-family="JetBrains Mono, monospace" font-size="10">unfreeze</text>`
+    : '';
 
-  const ticks = [.80, .82, .84, .86, .88, .90];
-
-  const svg = `
-<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Validation accuracy per epoch for MobileNetV2 and ResNet18">
+  host.innerHTML = `
+<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Validation accuracy per epoch">
   <title>Validation accuracy per epoch</title>
-
   ${ticks.map(t => `
   <line x1="${m.l}" y1="${Y(t).toFixed(1)}" x2="${m.l + iw}" y2="${Y(t).toFixed(1)}" stroke="${C.line}" stroke-width="1"/>
   <text x="${m.l - 10}" y="${(Y(t) + 4).toFixed(1)}" fill="${C.muted}" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="end">${(t * 100).toFixed(0)}%</text>`).join('')}
-
-  <!-- phase change marker: head-only → fine-tune -->
-  <line x1="${X(2.5).toFixed(1)}" y1="${m.t}" x2="${X(2.5).toFixed(1)}" y2="${m.t + ih}"
-        stroke="${C.signal}" stroke-width="1" stroke-dasharray="3 5" opacity=".55"/>
-  <text x="${(X(2.5) + 7).toFixed(1)}" y="${m.t + 13}" fill="${C.signal}"
-        font-family="JetBrains Mono, monospace" font-size="10">unfreeze</text>
-
-  ${[1, 2, 3].map(ep => `
-  <text x="${X(ep).toFixed(1)}" y="${H - 14}" fill="${C.muted}" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="middle">epoch ${ep}</text>`).join('')}
-
-  <path d="${path(RUN.resnet)}"    fill="none" stroke="${C.recycle}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="${path(RUN.mobilenet)}" fill="none" stroke="${C.organic}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
-
-  ${RUN.resnet.map(d => `<circle cx="${X(d.ep).toFixed(1)}" cy="${Y(d.valAcc).toFixed(1)}" r="3.4" fill="${C.recycle}"/>`).join('')}
-  ${RUN.mobilenet.map(d => `<circle cx="${X(d.ep).toFixed(1)}" cy="${Y(d.valAcc).toFixed(1)}" r="3.8" fill="${C.organic}"/>`).join('')}
-
-  <!-- endpoint callouts -->
-  <text x="${(X(3) + 10).toFixed(1)}" y="${(Y(RUN.mobilenet[2].valAcc) + 4).toFixed(1)}" fill="${C.organic}"
-        font-family="JetBrains Mono, monospace" font-size="11" font-weight="500">89.3%</text>
-  <text x="${(X(3) + 10).toFixed(1)}" y="${(Y(RUN.resnet[2].valAcc) + 4).toFixed(1)}" fill="${C.recycle}"
-        font-family="JetBrains Mono, monospace" font-size="11" font-weight="500">87.9%</text>
+  ${marker}
+  ${Array.from({ length: nEp }, (_, i) => `
+  <text x="${X(i).toFixed(1)}" y="${H - 14}" fill="${C.muted}" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="middle">epoch ${i + 1}</text>`).join('')}
+  ${series.map(s => `
+  <path d="${s.vals.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}"
+        fill="none" stroke="${s.colour}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+  ${s.vals.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3.6" fill="${s.colour}"/>`).join('')}
+  <text x="${(X(s.vals.length - 1) + 10).toFixed(1)}" y="${(Y(s.vals[s.vals.length - 1]) + 4).toFixed(1)}"
+        fill="${s.colour}" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500">${(s.vals[s.vals.length - 1] * 100).toFixed(1)}%</text>`).join('')}
 </svg>`;
 
-  host.innerHTML = svg;
+  $('#curveFoot').textContent = headEp && headEp < nEp
+    ? `Epochs 1–${headEp} train the classifier head only; the rest unfreeze the last blocks at a lower learning rate.`
+    : '';
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -640,15 +847,14 @@ async function initHealth() {
    ───────────────────────────────────────────────────────────── */
 function boot() {
   initSorter();
-  initCounters();
   initSpy();
   initReveal();
-  drawCurves();
   initNet();
   initGaps();
   initBay();
   initApi();
   initHealth();
+  loadMetrics();     // fills every figure on the page
 }
 
 if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot);

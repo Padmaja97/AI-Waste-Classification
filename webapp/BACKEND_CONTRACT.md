@@ -2,19 +2,38 @@
 
 The frontend is tolerant (it accepts several key spellings), but this is the shape it is built for.
 
+## No invented numbers
+
+The page displays **only measured values**. Everything in the hero readout, the comparison
+table, the confusion matrix, the per-class panel and gap G3 is read at runtime from
+`outputs/eval_report.json`, which `python -m src.evaluate` writes. If that file is absent the
+page says "No evaluation report found" rather than showing a placeholder figure.
+
+Latency is timed on your machine (median of 60 forward passes after warm-up), not claimed.
+When the run was QUICK mode, a banner under the hero states the subset sizes, so the figures
+are never mistaken for full-dataset results.
+
 ## Files to copy into your Flask project
 
 ```
-templates/index.html      ← replaces your current one
-static/style.css          ← replaces your current one
-static/app.js             ← replaces your current one
+templates/index.html      <- replaces your current one
+static/style.css          <- replaces your current one
+static/app.js             <- replaces your current one
+metrics_routes.py         <- new, next to app.py
 ```
 
-Your `app.py` stays as it is, as long as it declares:
+In `app.py`, after creating the app:
 
 ```python
+from metrics_routes import register_metrics
+
 app = Flask(__name__, template_folder='templates', static_folder='static')
+register_metrics(app, outputs_dir='outputs')   # serves /api/metrics, /api/stats,
+                                               # /api/training-history
 ```
+
+Point `outputs_dir` at wherever `src.evaluate` wrote its files. An absolute path is safest
+if the Flask app lives in a different folder from the training code.
 
 ---
 
@@ -28,23 +47,11 @@ Drives the badge in the top-right of the nav. `loaded` or `ok` also accepted ins
 
 ---
 
-## `GET /api/stats`
+## `GET /api/metrics`, `GET /api/stats`, `GET /api/training-history`
 
-Anything JSON-serialisable. Shown raw in the API console.
-
-```json
-{
-  "dataset": { "total": 25077, "organic": 13966, "recyclable": 11111 },
-  "test": { "accuracy": 0.8925, "f1": 0.8915, "n": 800 }
-}
-```
-
----
-
-## `GET /api/research-gaps`
-
-Anything JSON-serialisable. Shown raw in the API console. The five gaps are already written
-into the page itself, so this endpoint is for the API demo only.
+Provided by `metrics_routes.py` — no work needed. They read `outputs/eval_report.json` and
+`outputs/training_histories.json`, and return `{"available": false, "reason": "..."}` when a
+file is missing, which the page renders as an explicit empty state.
 
 ---
 

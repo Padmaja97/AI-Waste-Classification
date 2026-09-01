@@ -8,14 +8,18 @@ Usage:
 """
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import os
+import platform
+import statistics
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-from sklearn.metrics import (auc, classification_report,
+from sklearn.metrics import (auc, classification_report, confusion_matrix,
                              precision_recall_fscore_support, roc_curve)
 
 from .common import (
@@ -125,6 +129,51 @@ def plot_gradcam(model: nn.Module, target_layer: nn.Module, test_ds, device, out
     plt.savefig(out_path, dpi=150); plt.close(fig)
 
 
+# ---------- measured latency ----------
+
+@torch.no_grad()
+def benchmark_latency(model: nn.Module, device, img_size: int, runs: int = 60, warmup: int = 12) -> dict:
+    """Time single-image forward passes. Reported as median + p95, never a round claim."""
+    model.eval()
+    x = torch.randn(1, 3, img_size, img_size, device=device)
+    for _ in range(warmup):
+        model(x)
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
+    samples = []
+    for _ in range(runs):
+        t0 = time.perf_counter()
+        model(x)
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        samples.append((time.perf_counter() - t0) * 1000.0)
+
+    samples.sort()
+    return {
+        "median_ms": round(statistics.median(samples), 2),
+        "p95_ms": round(samples[int(0.95 * (len(samples) - 1))], 2),
+        "min_ms": round(samples[0], 2),
+        "runs": runs,
+        "batch_size": 1,
+        "input_size": img_size,
+        "device": str(device),
+    }
+
+
+def _per_class(y_true, y_pred) -> dict:
+    p, r, f, s = precision_recall_fscore_support(y_true, y_pred, labels=[0, 1], zero_division=0)
+    return {
+        CLASS_NAMES[i]: {
+            "precision": round(float(p[i]), 4),
+            "recall": round(float(r[i]), 4),
+            "f1": round(float(f[i]), 4),
+            "support": int(s[i]),
+        }
+        for i in (0, 1)
+    }
+
+
 # ---------- main ----------
 
 def _underlying_dataset(loader):
@@ -191,6 +240,83 @@ def main() -> None:
         json.dump([{"model": r[0], "params": r[1], "size_mb": r[2],
                     "accuracy": r[3], "precision": r[4], "recall": r[5], "f1": r[6]} for r in rows], f, indent=2)
     plot_comparison(rows, os.path.join(cfg.out_dir, "08_model_comparison.png"))
+
+    # ---- full provenance report: every number the web UI shows comes from here ----
+    print("\nBenchmarking single-image latency...")
+    entries = [
+        ("Baseline CNN", "baseline", baseline, baseline_res, baseline_saved, 128),
+        ("MobileNetV2", "mobilenet", mobilenet, mob_res, mob_pth, cfg.img_size_transfer),
+        ("ResNet18", "resnet", resnet, res_res, res_pth, cfg.img_size_transfer),
+    ]
+
+    models_out = []
+    for name, key, mdl, res, pth, isize in entries:
+        cmatrix = confusion_matrix(res["y_true"], res["y_pred"], labels=[0, 1])
+        lat = benchmark_latency(mdl, cfg.device, isize)
+        print(f"  {name:<16} median {lat['median_ms']:>7.2f} ms   p95 {lat['p95_ms']:>7.2f} ms")
+        models_out.append({
+            "name": name,
+            "key": key,
+            "input_size": isize,
+            "params": count_params(mdl),
+            "size_mb": round(size_mb(pth), 2),
+            "accuracy": round(float(res["acc"]), 4),
+            "precision": round(float(res["precision"]), 4),
+            "recall": round(float(res["recall"]), 4),
+            "f1": round(float(res["f1"]), 4),
+            "per_class": _per_class(res["y_true"], res["y_pred"]),
+            "confusion": cmatrix.tolist(),
+            "latency": lat,
+        })
+
+    # true on-disk dataset counts, independent of any subsetting
+    def _count(split: str) -> dict:
+        root = os.path.join(cfg.dataset_dir, split)
+        out = {}
+        for cls_dir, cls_name in (("O", CLASS_NAMES[0]), ("R", CLASS_NAMES[1])):
+            p = os.path.join(root, cls_dir)
+            out[cls_name] = len(os.listdir(p)) if os.path.isdir(p) else 0
+        out["total"] = sum(v for k, v in out.items() if k != "total")
+        return out
+
+    report = {
+        "generated_at": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "classes": CLASS_NAMES,
+        "num_classes": len(CLASS_NAMES),
+        "run": {
+            "quick_mode": bool(cfg.quick),
+            "device": str(cfg.device),
+            "transfer_input_size": cfg.img_size_transfer,
+            "baseline_input_size": 128,
+            "epochs_head": cfg.epochs_head,
+            "epochs_finetune": cfg.epochs_finetune,
+            "batch_size": cfg.batch,
+            "train_subset": cfg.subset_train,
+            "test_subset": cfg.subset_test,
+            "torch": torch.__version__,
+            "python": platform.python_version(),
+            "machine": platform.platform(),
+        },
+        "dataset": {
+            "root": cfg.dataset_dir,
+            "train": _count("TRAIN"),
+            "test": _count("TEST"),
+        },
+        "evaluation": {
+            "test_images_used": int(len(mob_res["y_true"])),
+            "note": (
+                "QUICK mode: trained and evaluated on a random subset, not the full dataset."
+                if cfg.quick else
+                "Full run: trained on the complete training set and evaluated on the full test set."
+            ),
+        },
+        "models": models_out,
+        "best": max(models_out, key=lambda m: m["accuracy"])["name"],
+    }
+    report_path = os.path.join(cfg.out_dir, "eval_report.json")
+    with open(report_path, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"\nWrote provenance report -> {report_path}")
 
     # --- ROC + per-class on best transfer model ---
     best_name, best_res = ("MobileNetV2", mob_res) if mob_res["acc"] >= res_res["acc"] else ("ResNet18", res_res)

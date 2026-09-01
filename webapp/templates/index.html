@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>EcoSort AI — Inspection Line</title>
-<meta name="description" content="Deep-learning inspection line that sorts municipal solid waste into wet and dry streams, with Grad-CAM explainability.">
+<meta name="description" content="Two-class deep-learning inspection line that sorts municipal solid waste into wet and dry streams, with Grad-CAM explainability.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
@@ -52,14 +52,23 @@
       <span class="split">
         <span class="split__o">decision</span><span class="split__slash">/</span><span class="split__r">problem</span>
       </span><br>
-      made 25,077 times.
+      made <span id="heroCount" class="hero__count">—</span> times.
     </h1>
 
     <p class="hero__lede">
-      India generates roughly 62 million tonnes of municipal solid waste a year, and the sorting
-      still happens by hand. EcoSort is an inspection line: it looks at an item, decides
-      <strong class="t-o">wet</strong> or <strong class="t-r">dry</strong>, and shows you exactly which
-      pixels made it decide.
+      India generates about 62 million tonnes of municipal solid waste a year<sup class="cite"><a href="#refs">1</a></sup>,
+      and the sorting still happens by hand. EcoSort is an inspection line: it looks at an item,
+      decides <strong class="t-o">wet</strong> or <strong class="t-r">dry</strong>, and shows you exactly
+      which pixels made it decide.
+    </p>
+
+    <!-- scope is stated up front, not buried -->
+    <p class="scope">
+      <span class="scope__n mono" id="scopeN">2</span>
+      <span class="scope__t">
+        classes only — <b class="t-o">Organic (wet)</b> and <b class="t-r">Recyclable (dry)</b>.
+        This model does not identify individual materials, e-waste categories, or hazardous items.
+      </span>
     </p>
 
     <div class="hero__cta">
@@ -67,31 +76,40 @@
       <a class="btn btn--ghost" href="#analytics">See the numbers</a>
     </div>
 
-    <!-- instrument readout strip -->
-    <dl class="readout" id="readout">
+    <!-- instrument readout — filled from /api/metrics, never hardcoded -->
+    <dl class="readout" id="readout" data-state="loading">
       <div class="readout__cell">
         <dt>Test accuracy</dt>
-        <dd><span class="num" data-count="89.25" data-dp="2">0.00</span><span class="unit">%</span></dd>
-        <div class="readout__bar"><i style="--w:89.25%"></i></div>
+        <dd><span class="num" id="mAcc">—</span><span class="unit">%</span></dd>
+        <div class="readout__bar"><i id="mAccBar" style="--w:0%"></i></div>
       </div>
       <div class="readout__cell">
-        <dt>Images inspected</dt>
-        <dd><span class="num" data-count="25077" data-dp="0">0</span></dd>
+        <dt>Images in dataset</dt>
+        <dd><span class="num" id="mImgs">—</span></dd>
         <div class="readout__bar"><i style="--w:100%"></i></div>
       </div>
       <div class="readout__cell">
-        <dt>Inference · CPU</dt>
-        <dd><span class="num" data-count="24" data-dp="0">0</span><span class="unit">ms</span></dd>
-        <div class="readout__bar"><i style="--w:12%"></i></div>
+        <dt>Inference · measured</dt>
+        <dd><span class="num" id="mLat">—</span><span class="unit">ms</span></dd>
+        <div class="readout__bar"><i id="mLatBar" style="--w:0%"></i></div>
       </div>
       <div class="readout__cell">
         <dt>Model footprint</dt>
-        <dd><span class="num" data-count="8.51" data-dp="2">0.00</span><span class="unit">MB</span></dd>
-        <div class="readout__bar"><i style="--w:20%"></i></div>
+        <dd><span class="num" id="mSize">—</span><span class="unit">MB</span></dd>
+        <div class="readout__bar"><i id="mSizeBar" style="--w:0%"></i></div>
       </div>
     </dl>
+
+    <p class="readout__src mono" id="readoutSrc">reading outputs/eval_report.json…</p>
   </div>
 </section>
+
+<!-- provenance banner — states exactly what the numbers are -->
+<div class="prov" id="prov" hidden>
+  <span class="prov__flag" id="provFlag">—</span>
+  <p class="prov__text" id="provText"></p>
+  <span class="prov__when mono" id="provWhen"></span>
+</div>
 
 <!-- ══════════════ CLASSIFIER ══════════════ -->
 <section class="sec" id="classifier">
@@ -100,8 +118,8 @@
   <div class="sec__body">
     <header class="sec__head">
       <h2>Put something on the belt.</h2>
-      <p>Drop an image, paste from your clipboard, or use the camera. The model returns a stream
-         assignment, a confidence, and a Grad-CAM heat map of the pixels that drove it.</p>
+      <p>Drop an image, paste from your clipboard, or use the camera. The model returns one of two
+         stream assignments, a confidence, and a Grad-CAM heat map of the pixels that drove it.</p>
     </header>
 
     <div class="bay">
@@ -132,23 +150,16 @@
           <button class="chip chip--act" id="clearBtn" type="button" hidden>Clear</button>
         </div>
 
-        <div class="samples">
-          <p class="samples__label">Or try a sample</p>
-          <div class="samples__row" id="sampleRow">
-            <button class="sample" data-kind="organic" data-name="Banana peel"   type="button"><span class="sample__sw" data-s="o"></span>Banana peel</button>
-            <button class="sample" data-kind="organic" data-name="Vegetable scraps" type="button"><span class="sample__sw" data-s="o"></span>Veg scraps</button>
-            <button class="sample" data-kind="organic" data-name="Tea leaves"    type="button"><span class="sample__sw" data-s="o"></span>Tea leaves</button>
-            <button class="sample" data-kind="recycle" data-name="PET bottle"    type="button"><span class="sample__sw" data-s="r"></span>PET bottle</button>
-            <button class="sample" data-kind="recycle" data-name="Cardboard"     type="button"><span class="sample__sw" data-s="r"></span>Cardboard</button>
-            <button class="sample" data-kind="recycle" data-name="Aluminium can" type="button"><span class="sample__sw" data-s="r"></span>Aluminium can</button>
-          </div>
-        </div>
+        <p class="intake__note">
+          The model was trained on the Kaggle waste-classification set. Items unlike that data —
+          e-waste, batteries, sanitary or medical waste — will still be forced into one of the two
+          classes. Treat those results as meaningless.
+        </p>
       </div>
 
       <!-- ── verdict ── -->
       <div class="bay__verdict" id="verdictPane" data-state="idle">
 
-        <!-- idle -->
         <div class="verdict__idle" id="verdictIdle">
           <div class="idle__streams">
             <div class="idle__stream" data-s="o">
@@ -163,13 +174,11 @@
           <p class="idle__msg">Waiting for an item.</p>
         </div>
 
-        <!-- working -->
         <div class="verdict__work" id="verdictWork" hidden>
           <div class="work__bars"><i></i><i></i><i></i><i></i><i></i></div>
-          <p class="work__step" id="workStep">Normalising 128×128 · ImageNet stats</p>
+          <p class="work__step" id="workStep">Normalising · ImageNet stats</p>
         </div>
 
-        <!-- result -->
         <div class="verdict__out" id="verdictOut" hidden>
           <div class="out__top">
             <div class="ring" id="ring">
@@ -229,61 +238,39 @@
   <div class="sec__body">
     <header class="sec__head">
       <h2>Three models, one test set.</h2>
-      <p>800 held-out images. The interesting result is not the top score — it is that MobileNetV2
-         gets within a point of the baseline on <em>38% fewer parameters</em>, which is the whole
-         argument for putting this on a phone.</p>
+      <p>Everything below is read from <code class="inline">outputs/eval_report.json</code>, written by
+         <code class="inline">python -m src.evaluate</code>. If a figure is missing here, it has not
+         been measured yet.</p>
     </header>
 
-    <!-- comparison table -->
     <div class="tablewrap">
       <table class="ctable">
         <caption class="vh">Model comparison on the held-out test set</caption>
         <thead>
           <tr><th scope="col">Model</th><th scope="col">Params</th><th scope="col">Size</th>
-              <th scope="col">Accuracy</th><th scope="col">F1</th><th scope="col"></th></tr>
+              <th scope="col">Accuracy</th><th scope="col">F1</th>
+              <th scope="col">Latency<span class="thsub">median</span></th><th scope="col"></th></tr>
         </thead>
-        <tbody>
-          <tr>
-            <th scope="row">Baseline CNN <span class="tnote">5-layer, from scratch</span></th>
-            <td class="mono">3,616,706</td><td class="mono">13.83 MB</td>
-            <td class="mono">90.38%</td><td class="mono">0.9029</td>
-            <td><div class="tbar"><i style="--w:90.38%" data-s="n"></i></div></td>
-          </tr>
-          <tr class="is-pick">
-            <th scope="row">MobileNetV2 <span class="tnote">transfer · fine-tuned</span></th>
-            <td class="mono">2,226,434</td><td class="mono">8.51 MB</td>
-            <td class="mono">89.25%</td><td class="mono">0.8915</td>
-            <td><div class="tbar"><i style="--w:89.25%" data-s="o"></i></div></td>
-          </tr>
-          <tr>
-            <th scope="row">ResNet18 <span class="tnote">transfer · fine-tuned</span></th>
-            <td class="mono">11,177,538</td><td class="mono">42.66 MB</td>
-            <td class="mono">87.88%</td><td class="mono">0.8788</td>
-            <td><div class="tbar"><i style="--w:87.88%" data-s="r"></i></div></td>
-          </tr>
+        <tbody id="cmpBody">
+          <tr class="empty"><td colspan="7">Loading measurements…</td></tr>
         </tbody>
       </table>
     </div>
 
     <div class="charts">
-      <!-- training curves -->
       <figure class="panel panel--wide">
         <figcaption class="panel__head">
           <h3>Validation accuracy per epoch</h3>
-          <div class="legend">
-            <span class="legend__k" data-s="o">MobileNetV2</span>
-            <span class="legend__k" data-s="r">ResNet18</span>
-          </div>
+          <div class="legend" id="curveLegend"></div>
         </figcaption>
-        <div class="panel__plot" id="curvePlot"></div>
-        <p class="panel__foot">Epochs 1–2 train the classifier head only; epoch 3 unfreezes the last blocks at lr 1e-4.</p>
+        <div class="panel__plot" id="curvePlot"><p class="plot__empty">Loading training history…</p></div>
+        <p class="panel__foot" id="curveFoot"></p>
       </figure>
 
-      <!-- confusion matrix -->
       <figure class="panel">
         <figcaption class="panel__head">
           <h3>Confusion matrix</h3>
-          <span class="panel__sub">MobileNetV2 · n=800</span>
+          <span class="panel__sub" id="cmSub">—</span>
         </figcaption>
         <div class="cm" id="cm">
           <span class="cm__corner"></span>
@@ -291,39 +278,25 @@
           <span class="cm__ch">Pred. recyclable</span>
 
           <span class="cm__rh">True organic</span>
-          <button class="cm__cell is-hit"  data-v="413" data-s="o" style="--i:.96"><b>413</b><small>96%</small></button>
-          <button class="cm__cell is-miss" data-v="18"  style="--i:.04"><b>18</b><small>4%</small></button>
+          <div class="cm__cell is-hit"  data-s="o" id="cmTL" style="--i:0"><b>—</b><small></small></div>
+          <div class="cm__cell is-miss"             id="cmTR" style="--i:0"><b>—</b><small></small></div>
 
           <span class="cm__rh">True recyclable</span>
-          <button class="cm__cell is-miss" data-v="68"  style="--i:.18"><b>68</b><small>18%</small></button>
-          <button class="cm__cell is-hit"  data-v="301" data-s="r" style="--i:.82"><b>301</b><small>82%</small></button>
+          <div class="cm__cell is-miss"             id="cmBL" style="--i:0"><b>—</b><small></small></div>
+          <div class="cm__cell is-hit"  data-s="r" id="cmBR" style="--i:0"><b>—</b><small></small></div>
         </div>
-        <p class="panel__foot" id="cmFoot">68 recyclable items were sent to the wet stream — the model's
-          real weakness, and where the next round of training should go.</p>
+        <p class="panel__foot" id="cmFoot">Waiting for the evaluation report.</p>
       </figure>
 
-      <!-- per-class -->
       <figure class="panel">
         <figcaption class="panel__head">
           <h3>Per-class metrics</h3>
           <span class="panel__sub">precision / recall / F1</span>
         </figcaption>
-        <div class="pcm">
-          <div class="pcm__group" data-s="o">
-            <p class="pcm__name">Organic <span class="mono">n=431</span></p>
-            <div class="pcm__row"><span>P</span><div class="pcm__track"><i style="--w:85.86%"></i></div><b class="mono">.8586</b></div>
-            <div class="pcm__row"><span>R</span><div class="pcm__track"><i style="--w:95.82%"></i></div><b class="mono">.9582</b></div>
-            <div class="pcm__row"><span>F1</span><div class="pcm__track"><i style="--w:90.57%"></i></div><b class="mono">.9057</b></div>
-          </div>
-          <div class="pcm__group" data-s="r">
-            <p class="pcm__name">Recyclable <span class="mono">n=369</span></p>
-            <div class="pcm__row"><span>P</span><div class="pcm__track"><i style="--w:94.36%"></i></div><b class="mono">.9436</b></div>
-            <div class="pcm__row"><span>R</span><div class="pcm__track"><i style="--w:81.57%"></i></div><b class="mono">.8157</b></div>
-            <div class="pcm__row"><span>F1</span><div class="pcm__track"><i style="--w:87.50%"></i></div><b class="mono">.8750</b></div>
-          </div>
+        <div class="pcm" id="pcm">
+          <p class="plot__empty">Waiting for the evaluation report.</p>
         </div>
-        <p class="panel__foot">High organic recall, high recyclable precision: when it says
-          “recyclable” it is nearly always right, but it misses some.</p>
+        <p class="panel__foot" id="pcmFoot"></p>
       </figure>
     </div>
   </div>
@@ -387,9 +360,9 @@
       <div><dt>Optimiser</dt><dd class="mono">Adam · wd 1e-4</dd></div>
       <div><dt>Schedule</dt><dd class="mono">StepLR · γ 0.5</dd></div>
       <div><dt>Loss</dt><dd class="mono">CrossEntropy</dd></div>
-      <div><dt>Batch</dt><dd class="mono">32</dd></div>
+      <div><dt>Batch</dt><dd class="mono" id="specBatch">—</dd></div>
       <div><dt>Augment</dt><dd class="mono">flip · rot15 · jitter</dd></div>
-      <div><dt>Params</dt><dd class="mono">3.62 M</dd></div>
+      <div><dt>Params</dt><dd class="mono" id="specParams">—</dd></div>
     </dl>
   </div>
 </section>
@@ -401,8 +374,8 @@
   <div class="sec__body">
     <header class="sec__head">
       <h2>What 25 papers left open.</h2>
-      <p>Five gaps came out of the review. Two of them this build actually closes; the other three
-         are the roadmap. Click a gap to open it.</p>
+      <p>Five gaps came out of the review. One is closed by this build, one is partly closed, and
+         three are the roadmap. Click a gap to open it.</p>
     </header>
 
     <ol class="gaps" id="gapList">
@@ -414,8 +387,10 @@
         </button>
         <div class="gap__panel">
           <p>Paper #30 classifies organic vs recyclable only (2 classes). Paper #10 handles e-waste
-             only (77 classes). Nothing merges the two into one decision surface, so a deployment
-             has to run two models and reconcile them.</p>
+             only (77 classes). Nothing merges the two into one decision surface.</p>
+          <p class="gap__todo"><b>Not addressed here.</b> This build is the 2-class half only. The
+             77-class e-waste dataset was selected during the literature review but no model was
+             trained on it, so no claim is made about e-waste performance.</p>
           <p class="gap__refs"><span class="mono">refs</span> #30 · #10 · #2</p>
         </div>
       </li>
@@ -428,25 +403,27 @@
         </button>
         <div class="gap__panel">
           <p>Benchmarks come from UK, Ireland and Japan. Indian MSW runs near 60% organic and carries
-             items the Western sets simply do not contain — coconut shells, jute, mixed sachet
-             plastics. Papers #31 and #32 study Indian streams but without any vision model.</p>
+             items the Western sets do not contain — coconut shells, jute, mixed sachet plastics.
+             Papers #31 and #32 study Indian streams but without any vision model.</p>
+          <p class="gap__todo"><b>Not addressed here.</b> The Kaggle set used for training is not
+             Indian-sourced, so accuracy on Indian street waste is unmeasured.</p>
           <p class="gap__refs"><span class="mono">refs</span> #31 · #32 · #21</p>
         </div>
       </li>
 
-      <li class="gap" data-status="closed">
+      <li class="gap" data-status="partial">
         <button class="gap__bar" aria-expanded="false">
           <span class="gap__no mono">G3</span>
           <span class="gap__name">No lightweight mobile-deployable model</span>
-          <span class="gap__pill" data-st="closed">addressed</span>
+          <span class="gap__pill" data-st="partial">partly addressed</span>
         </button>
         <div class="gap__panel">
           <p>YOLOv11 in paper #10 needs a GPU. The 1 MB CNN in paper #30 only reaches 80.9%. Neither
              end is deployable-and-accurate.</p>
-          <p class="gap__did"><b>What this build did:</b> fine-tuned MobileNetV2 to
-             <span class="mono">89.25%</span> at <span class="mono">2.23 M</span> parameters and
-             <span class="mono">8.51 MB</span> — 38% smaller than the baseline CNN, within 1.1 points
-             of it, and running in <span class="mono">~24 ms</span> on CPU.</p>
+          <p class="gap__did"><b>What this build did:</b> <span id="g3Text">fine-tuned MobileNetV2 —
+             figures load from the evaluation report.</span></p>
+          <p class="gap__todo"><b>Caveat:</b> <span id="g3Caveat">—</span> No on-device
+             (Android/iOS) deployment has been built or benchmarked yet.</p>
           <p class="gap__refs"><span class="mono">refs</span> #10 · #30 · #2</p>
         </div>
       </li>
@@ -475,7 +452,9 @@
         </button>
         <div class="gap__panel">
           <p>Paper #10 proposes an edge architecture but never builds it. Paper #5 puts medical waste
-             on a blockchain with no vision layer at all. No end-to-end smart bin exists in the set.</p>
+             on a blockchain with no vision layer. No end-to-end smart bin exists in the set.</p>
+          <p class="gap__todo"><b>Not addressed here.</b> This is a web demo on a laptop, not a
+             deployed bin.</p>
           <p class="gap__refs"><span class="mono">refs</span> #10 · #5 · #26</p>
         </div>
       </li>
@@ -491,7 +470,11 @@
     <header class="sec__head">
       <h2>Which bin, and why.</h2>
       <p>Swachh Bharat Mission fixes the colours nationally: green takes wet biodegradable waste,
-         blue takes dry recyclables. The model's two classes map straight onto them.</p>
+         blue takes dry recyclables. The model's two classes map onto them.</p>
+      <p class="sec__caveat">
+        The lists below are the municipal rules for people, not model outputs. EcoSort predicts only
+        <b>organic</b> or <b>recyclable</b> — it does not recognise these items individually.
+      </p>
     </header>
 
     <div class="bins">
@@ -532,9 +515,9 @@
 
     <p class="guide__note">
       <span class="guide__warn" aria-hidden="true"></span>
-      Sanitary waste, batteries, tube lights, paint and medicines belong in neither bin — they go to a
-      separate hazardous collection. EcoSort does not classify these, and a deployment must route
-      them out before the belt.
+      Sanitary waste, batteries, tube lights, paint, medicines and e-waste belong in neither bin —
+      they go to separate hazardous collection. <b>EcoSort cannot detect these.</b> It will force any
+      such item into organic or recyclable, so a real deployment must route them out before the belt.
     </p>
   </div>
 </section>
@@ -546,7 +529,8 @@
   <div class="sec__body">
     <header class="sec__head">
       <h2>Talk to it directly.</h2>
-      <p>Four endpoints on the Flask server. Send a request and read the raw response.</p>
+      <p>Live requests against the Flask server. The same <code class="inline">/api/metrics</code>
+         response fills every figure on this page.</p>
     </header>
 
     <div class="api">
@@ -554,12 +538,12 @@
         <li><button role="tab" class="ep is-on" data-path="/api/health" data-method="GET" aria-selected="true">
           <span class="ep__m" data-m="get">GET</span><code>/api/health</code>
           <span class="ep__d">Model load state and device</span></button></li>
+        <li><button role="tab" class="ep" data-path="/api/metrics" data-method="GET" aria-selected="false">
+          <span class="ep__m" data-m="get">GET</span><code>/api/metrics</code>
+          <span class="ep__d">Full evaluation report — the source for this page</span></button></li>
         <li><button role="tab" class="ep" data-path="/api/stats" data-method="GET" aria-selected="false">
           <span class="ep__m" data-m="get">GET</span><code>/api/stats</code>
-          <span class="ep__d">Dataset counts and test metrics</span></button></li>
-        <li><button role="tab" class="ep" data-path="/api/research-gaps" data-method="GET" aria-selected="false">
-          <span class="ep__m" data-m="get">GET</span><code>/api/research-gaps</code>
-          <span class="ep__d">The five gaps with status</span></button></li>
+          <span class="ep__d">Dataset counts and headline metrics</span></button></li>
         <li><button role="tab" class="ep" data-path="/api/predict" data-method="POST" aria-selected="false">
           <span class="ep__m" data-m="post">POST</span><code>/api/predict</code>
           <span class="ep__d">multipart image → class, confidence, Grad-CAM</span></button></li>
@@ -571,7 +555,7 @@
           <button class="btn btn--small" id="sendBtn" type="button">Send request</button>
         </div>
         <pre class="console__out" id="conOut"><code>Pick an endpoint and press Send.</code></pre>
-        <p class="console__note" id="conNote">POST /api/predict needs an image — load one in the inspection bay first.</p>
+        <p class="console__note" id="conNote">Sends a live request to your Flask server.</p>
       </div>
     </div>
   </div>
@@ -579,15 +563,16 @@
 
 </main>
 
-<footer class="foot">
+<footer class="foot" id="refs">
   <div class="foot__l">
     <p class="foot__brand">EcoSort<em>AI</em></p>
     <p class="foot__by">Project-Based Learning · B.Tech CSE · Symbiosis University</p>
   </div>
-  <div class="foot__r">
-    <p>Dataset: Sekar, <cite>Waste Classification Data</cite> (Kaggle), 25,077 images.</p>
-    <p>Baseline after Nnamoko et&nbsp;al., <cite>Infrastructures</cite> 7(4):47, 2022.</p>
-  </div>
+  <ol class="foot__refs">
+    <li>Central Pollution Control Board, <cite>Annual Report on Solid Waste Management</cite>, Govt. of India.</li>
+    <li>Dataset: Sekar, <cite>Waste Classification Data</cite> (Kaggle) — <span id="refCount">—</span> images.</li>
+    <li>Baseline after Nnamoko et&nbsp;al., <cite>Infrastructures</cite> 7(4):47, 2022.</li>
+  </ol>
 </footer>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
