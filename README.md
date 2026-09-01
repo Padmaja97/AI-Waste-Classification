@@ -1,24 +1,37 @@
 # AI-Waste-Classification
 
-PBL project — AI-based waste classification using deep learning.
+PBL project — AI-based waste classification using deep learning (Organic vs Recyclable).
+
+## Primary workflow: **Antigravity** (local)
+
+See [`ANTIGRAVITY.md`](ANTIGRAVITY.md) for the full setup guide. Short version:
+
+```bash
+python -m venv .venv && source .venv/bin/activate  # (Windows: .venv\Scripts\activate)
+pip install -r requirements.txt
+
+# Put the Kaggle waste-classification dataset at ./dataset/DATASET/{TRAIN,TEST}/{O,R}
+# Then:
+python -m src.train        # trains MobileNetV2 + ResNet18 with transfer learning
+python -m src.evaluate     # comparison + ROC + Grad-CAM + per-class metrics
+
+# No GPU?  QUICK=1 python -m src.train
+```
+
+Outputs land in `./outputs/`.
 
 ## Contents
 
-- `notebooks/PBL_Waste_Classification_Continuation.ipynb` — **Colab notebook to continue model training** from the baseline. Trains MobileNetV2 + ResNet18 with transfer learning, produces a comparison table, ROC curve, per-class metrics and Grad-CAM heatmaps.
-- `models/best_model.pth` — trained baseline (5-layer CNN, 128×128 input, ~14 MB).
-- `PROJECT_CONTEXT.md` — full project background (datasets, research gaps, prior tasks).
-- `outputs/` — populated by the continuation notebook (comparison PNGs, model checkpoints).
+- `src/common.py` — config, dataloaders, model builders, train/eval helpers
+- `src/train.py` — trains MobileNetV2 and/or ResNet18 (two-phase: freeze then fine-tune)
+- `src/evaluate.py` — baseline eval, comparison table + chart, ROC, per-class metrics, Grad-CAM
+- `models/best_model.pth` — pre-trained baseline (5-layer CNN, 128×128, ~14 MB)
+- `notebooks/PBL_Waste_Classification_Continuation.ipynb` — same pipeline as a notebook (Colab or Antigravity's notebook view)
+- `PROJECT_CONTEXT.md` — datasets, research gaps, prior tasks
+- `ANTIGRAVITY.md` — step-by-step for Antigravity
+- `requirements.txt` — Python dependencies
 
-## How to run the continuation on Colab
-
-1. Open Colab → **Runtime → Change runtime type → T4 GPU**.
-2. Upload `notebooks/PBL_Waste_Classification_Continuation.ipynb`.
-3. Upload `models/best_model.pth` into `/content/` (file panel on the left).
-4. Make sure your Kaggle waste dataset is at `/content/dataset/dataset/DATASET/{TRAIN,TEST}/{O,R}` (same layout as the original notebook).
-5. Run cells top-to-bottom. Total time on T4 ≈ 15–25 min.
-6. The last cell zips all outputs and auto-downloads `pbl_continuation_outputs.zip`.
-
-## What the continuation adds (mapped to your research gaps)
+## What this continuation adds (mapped to research gaps)
 
 | Addition | Research gap addressed |
 |---|---|
@@ -27,8 +40,6 @@ PBL project — AI-based waste classification using deep learning.
 | Grad-CAM heatmaps | #4 — explainability (XAI) |
 | ROC curve + per-class metrics | polish for the report |
 
-## Baseline (already trained)
+## Baseline (already trained, checked in)
 
-- 5-layer CNN, 128×128 input, 10 epochs, Adam(lr=1e-3), StepLR
-- ~3.6 M params, ~14 MB
-- Full details in `PROJECT_CONTEXT.md`
+5-layer CNN · 128×128 input · 10 epochs · Adam(lr=1e-3) · StepLR · ~3.6 M params · ~14 MB. Full details in `PROJECT_CONTEXT.md`.
