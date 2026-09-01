@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EcoSort AI — Inspection Line</title>
+<meta name="description" content="Deep-learning inspection line that sorts municipal solid waste into wet and dry streams, with Grad-CAM explainability.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="grain" aria-hidden="true"></div>
+
+<!-- ══════════════ NAV ══════════════ -->
+<header class="nav" id="nav">
+  <a class="nav__brand" href="#top">
+    <span class="nav__mark" aria-hidden="true">
+      <span class="nav__mark-o"></span><span class="nav__mark-r"></span>
+    </span>
+    <span class="nav__name">EcoSort<em>AI</em></span>
+  </a>
+
+  <nav class="nav__links" aria-label="Sections">
+    <a href="#classifier" data-spy="classifier">Classifier</a>
+    <a href="#analytics"  data-spy="analytics">Analytics</a>
+    <a href="#network"    data-spy="network">Network</a>
+    <a href="#gaps"       data-spy="gaps">Research Gaps</a>
+    <a href="#guide"      data-spy="guide">Bin Guide</a>
+    <a href="#api"        data-spy="api">API</a>
+  </nav>
+
+  <div class="nav__status" id="navStatus" data-state="checking">
+    <span class="nav__dot"></span>
+    <span class="nav__statusText">checking model</span>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ══════════════ HERO ══════════════ -->
+<section class="hero">
+  <canvas class="hero__canvas" id="sorterCanvas" aria-hidden="true"></canvas>
+
+  <div class="hero__inner">
+    <p class="eyebrow">Symbiosis University · Project-Based Learning · 2026</p>
+
+    <h1 class="hero__title">
+      Every bin is a<br>
+      <span class="split">
+        <span class="split__o">decision</span><span class="split__slash">/</span><span class="split__r">problem</span>
+      </span><br>
+      made 25,077 times.
+    </h1>
+
+    <p class="hero__lede">
+      India generates roughly 62 million tonnes of municipal solid waste a year, and the sorting
+      still happens by hand. EcoSort is an inspection line: it looks at an item, decides
+      <strong class="t-o">wet</strong> or <strong class="t-r">dry</strong>, and shows you exactly which
+      pixels made it decide.
+    </p>
+
+    <div class="hero__cta">
+      <a class="btn btn--primary" href="#classifier">Run the inspection line</a>
+      <a class="btn btn--ghost" href="#analytics">See the numbers</a>
+    </div>
+
+    <!-- instrument readout strip -->
+    <dl class="readout" id="readout">
+      <div class="readout__cell">
+        <dt>Test accuracy</dt>
+        <dd><span class="num" data-count="89.25" data-dp="2">0.00</span><span class="unit">%</span></dd>
+        <div class="readout__bar"><i style="--w:89.25%"></i></div>
+      </div>
+      <div class="readout__cell">
+        <dt>Images inspected</dt>
+        <dd><span class="num" data-count="25077" data-dp="0">0</span></dd>
+        <div class="readout__bar"><i style="--w:100%"></i></div>
+      </div>
+      <div class="readout__cell">
+        <dt>Inference · CPU</dt>
+        <dd><span class="num" data-count="24" data-dp="0">0</span><span class="unit">ms</span></dd>
+        <div class="readout__bar"><i style="--w:12%"></i></div>
+      </div>
+      <div class="readout__cell">
+        <dt>Model footprint</dt>
+        <dd><span class="num" data-count="8.51" data-dp="2">0.00</span><span class="unit">MB</span></dd>
+        <div class="readout__bar"><i style="--w:20%"></i></div>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<!-- ══════════════ CLASSIFIER ══════════════ -->
+<section class="sec" id="classifier">
+  <div class="sec__rail"><span class="sec__idx">01</span><span class="sec__rule"></span><span class="sec__tag">inspection bay</span></div>
+
+  <div class="sec__body">
+    <header class="sec__head">
+      <h2>Put something on the belt.</h2>
+      <p>Drop an image, paste from your clipboard, or use the camera. The model returns a stream
+         assignment, a confidence, and a Grad-CAM heat map of the pixels that drove it.</p>
+    </header>
+
+    <div class="bay">
+      <!-- ── intake ── -->
+      <div class="bay__intake">
+        <div class="drop" id="dropZone" tabindex="0" role="button" aria-label="Upload an image to classify">
+          <input type="file" id="fileInput" accept="image/*" hidden>
+          <div class="drop__empty" id="dropEmpty">
+            <svg class="drop__icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+              <path d="M24 32V14m0 0-7 7m7-7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M8 30v6a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <p class="drop__title">Drop an image here</p>
+            <p class="drop__hint">or <button type="button" class="linkish" id="browseBtn">browse</button> · paste with <kbd>Ctrl</kbd>+<kbd>V</kbd></p>
+          </div>
+          <img class="drop__preview" id="previewImg" alt="" hidden>
+          <canvas class="drop__cam" id="camCanvas" hidden></canvas>
+          <video class="drop__video" id="camVideo" playsinline hidden></video>
+          <div class="drop__scan" id="scanBeam" hidden></div>
+        </div>
+
+        <div class="intake__tools">
+          <button class="chip chip--act" id="camBtn" type="button">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="9" r="3.2" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M2 5.5h2.2L5.4 3.6h5.2l1.2 1.9H14v7.5H2z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></svg>
+            Camera
+          </button>
+          <button class="chip chip--act" id="shotBtn" type="button" hidden>Capture frame</button>
+          <button class="chip chip--act" id="clearBtn" type="button" hidden>Clear</button>
+        </div>
+
+        <div class="samples">
+          <p class="samples__label">Or try a sample</p>
+          <div class="samples__row" id="sampleRow">
+            <button class="sample" data-kind="organic" data-name="Banana peel"   type="button"><span class="sample__sw" data-s="o"></span>Banana peel</button>
+            <button class="sample" data-kind="organic" data-name="Vegetable scraps" type="button"><span class="sample__sw" data-s="o"></span>Veg scraps</button>
+            <button class="sample" data-kind="organic" data-name="Tea leaves"    type="button"><span class="sample__sw" data-s="o"></span>Tea leaves</button>
+            <button class="sample" data-kind="recycle" data-name="PET bottle"    type="button"><span class="sample__sw" data-s="r"></span>PET bottle</button>
+            <button class="sample" data-kind="recycle" data-name="Cardboard"     type="button"><span class="sample__sw" data-s="r"></span>Cardboard</button>
+            <button class="sample" data-kind="recycle" data-name="Aluminium can" type="button"><span class="sample__sw" data-s="r"></span>Aluminium can</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── verdict ── -->
+      <div class="bay__verdict" id="verdictPane" data-state="idle">
+
+        <!-- idle -->
+        <div class="verdict__idle" id="verdictIdle">
+          <div class="idle__streams">
+            <div class="idle__stream" data-s="o">
+              <span class="idle__pct">—</span>
+              <span class="idle__name">Organic · wet</span>
+            </div>
+            <div class="idle__stream" data-s="r">
+              <span class="idle__pct">—</span>
+              <span class="idle__name">Recyclable · dry</span>
+            </div>
+          </div>
+          <p class="idle__msg">Waiting for an item.</p>
+        </div>
+
+        <!-- working -->
+        <div class="verdict__work" id="verdictWork" hidden>
+          <div class="work__bars"><i></i><i></i><i></i><i></i><i></i></div>
+          <p class="work__step" id="workStep">Normalising 128×128 · ImageNet stats</p>
+        </div>
+
+        <!-- result -->
+        <div class="verdict__out" id="verdictOut" hidden>
+          <div class="out__top">
+            <div class="ring" id="ring">
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="ring__track" cx="60" cy="60" r="52"/>
+                <circle class="ring__fill"  cx="60" cy="60" r="52" id="ringFill"/>
+              </svg>
+              <div class="ring__mid">
+                <span class="ring__val" id="ringVal">0</span>
+                <span class="ring__pct">%</span>
+              </div>
+            </div>
+            <div class="out__label">
+              <p class="out__kicker">Stream assignment</p>
+              <h3 class="out__class" id="outClass">—</h3>
+              <p class="out__bin" id="outBin">—</p>
+            </div>
+          </div>
+
+          <div class="probs">
+            <div class="prob" data-s="o">
+              <div class="prob__head"><span>Organic</span><b id="pOrganic">0.0%</b></div>
+              <div class="prob__track"><i id="barOrganic"></i></div>
+            </div>
+            <div class="prob" data-s="r">
+              <div class="prob__head"><span>Recyclable</span><b id="pRecycle">0.0%</b></div>
+              <div class="prob__track"><i id="barRecycle"></i></div>
+            </div>
+          </div>
+
+          <div class="cam">
+            <div class="cam__head">
+              <p class="cam__title">Grad-CAM · what the network looked at</p>
+              <span class="cam__meta" id="inferMs">— ms</span>
+            </div>
+            <div class="cam__stage" id="camStage">
+              <img id="camBase" alt="Submitted item">
+              <img id="camHeat" alt="Grad-CAM activation heat map">
+              <div class="cam__none" id="camNone">Heat map unavailable for this item.</div>
+            </div>
+            <label class="cam__slider">
+              <span>Overlay</span>
+              <input type="range" id="camMix" min="0" max="100" value="55">
+              <output id="camMixOut">55%</output>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ ANALYTICS ══════════════ -->
+<section class="sec" id="analytics">
+  <div class="sec__rail"><span class="sec__idx">02</span><span class="sec__rule"></span><span class="sec__tag">measurements</span></div>
+
+  <div class="sec__body">
+    <header class="sec__head">
+      <h2>Three models, one test set.</h2>
+      <p>800 held-out images. The interesting result is not the top score — it is that MobileNetV2
+         gets within a point of the baseline on <em>38% fewer parameters</em>, which is the whole
+         argument for putting this on a phone.</p>
+    </header>
+
+    <!-- comparison table -->
+    <div class="tablewrap">
+      <table class="ctable">
+        <caption class="vh">Model comparison on the held-out test set</caption>
+        <thead>
+          <tr><th scope="col">Model</th><th scope="col">Params</th><th scope="col">Size</th>
+              <th scope="col">Accuracy</th><th scope="col">F1</th><th scope="col"></th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Baseline CNN <span class="tnote">5-layer, from scratch</span></th>
+            <td class="mono">3,616,706</td><td class="mono">13.83 MB</td>
+            <td class="mono">90.38%</td><td class="mono">0.9029</td>
+            <td><div class="tbar"><i style="--w:90.38%" data-s="n"></i></div></td>
+          </tr>
+          <tr class="is-pick">
+            <th scope="row">MobileNetV2 <span class="tnote">transfer · fine-tuned</span></th>
+            <td class="mono">2,226,434</td><td class="mono">8.51 MB</td>
+            <td class="mono">89.25%</td><td class="mono">0.8915</td>
+            <td><div class="tbar"><i style="--w:89.25%" data-s="o"></i></div></td>
+          </tr>
+          <tr>
+            <th scope="row">ResNet18 <span class="tnote">transfer · fine-tuned</span></th>
+            <td class="mono">11,177,538</td><td class="mono">42.66 MB</td>
+            <td class="mono">87.88%</td><td class="mono">0.8788</td>
+            <td><div class="tbar"><i style="--w:87.88%" data-s="r"></i></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="charts">
+      <!-- training curves -->
+      <figure class="panel panel--wide">
+        <figcaption class="panel__head">
+          <h3>Validation accuracy per epoch</h3>
+          <div class="legend">
+            <span class="legend__k" data-s="o">MobileNetV2</span>
+            <span class="legend__k" data-s="r">ResNet18</span>
+          </div>
+        </figcaption>
+        <div class="panel__plot" id="curvePlot"></div>
+        <p class="panel__foot">Epochs 1–2 train the classifier head only; epoch 3 unfreezes the last blocks at lr 1e-4.</p>
+      </figure>
+
+      <!-- confusion matrix -->
+      <figure class="panel">
+        <figcaption class="panel__head">
+          <h3>Confusion matrix</h3>
+          <span class="panel__sub">MobileNetV2 · n=800</span>
+        </figcaption>
+        <div class="cm" id="cm">
+          <span class="cm__corner"></span>
+          <span class="cm__ch">Pred. organic</span>
+          <span class="cm__ch">Pred. recyclable</span>
+
+          <span class="cm__rh">True organic</span>
+          <button class="cm__cell is-hit"  data-v="413" data-s="o" style="--i:.96"><b>413</b><small>96%</small></button>
+          <button class="cm__cell is-miss" data-v="18"  style="--i:.04"><b>18</b><small>4%</small></button>
+
+          <span class="cm__rh">True recyclable</span>
+          <button class="cm__cell is-miss" data-v="68"  style="--i:.18"><b>68</b><small>18%</small></button>
+          <button class="cm__cell is-hit"  data-v="301" data-s="r" style="--i:.82"><b>301</b><small>82%</small></button>
+        </div>
+        <p class="panel__foot" id="cmFoot">68 recyclable items were sent to the wet stream — the model's
+          real weakness, and where the next round of training should go.</p>
+      </figure>
+
+      <!-- per-class -->
+      <figure class="panel">
+        <figcaption class="panel__head">
+          <h3>Per-class metrics</h3>
+          <span class="panel__sub">precision / recall / F1</span>
+        </figcaption>
+        <div class="pcm">
+          <div class="pcm__group" data-s="o">
+            <p class="pcm__name">Organic <span class="mono">n=431</span></p>
+            <div class="pcm__row"><span>P</span><div class="pcm__track"><i style="--w:85.86%"></i></div><b class="mono">.8586</b></div>
+            <div class="pcm__row"><span>R</span><div class="pcm__track"><i style="--w:95.82%"></i></div><b class="mono">.9582</b></div>
+            <div class="pcm__row"><span>F1</span><div class="pcm__track"><i style="--w:90.57%"></i></div><b class="mono">.9057</b></div>
+          </div>
+          <div class="pcm__group" data-s="r">
+            <p class="pcm__name">Recyclable <span class="mono">n=369</span></p>
+            <div class="pcm__row"><span>P</span><div class="pcm__track"><i style="--w:94.36%"></i></div><b class="mono">.9436</b></div>
+            <div class="pcm__row"><span>R</span><div class="pcm__track"><i style="--w:81.57%"></i></div><b class="mono">.8157</b></div>
+            <div class="pcm__row"><span>F1</span><div class="pcm__track"><i style="--w:87.50%"></i></div><b class="mono">.8750</b></div>
+          </div>
+        </div>
+        <p class="panel__foot">High organic recall, high recyclable precision: when it says
+          “recyclable” it is nearly always right, but it misses some.</p>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ NETWORK ══════════════ -->
+<section class="sec" id="network">
+  <div class="sec__rail"><span class="sec__idx">03</span><span class="sec__rule"></span><span class="sec__tag">topology</span></div>
+
+  <div class="sec__body">
+    <header class="sec__head">
+      <h2>128 pixels in, two numbers out.</h2>
+      <p>The baseline is five convolutional blocks that halve the spatial map and double the channels
+         each time, then a classifier head. Hover a block to see the tensor it hands on.</p>
+    </header>
+
+    <div class="net" id="net">
+      <div class="net__flow" id="netFlow">
+        <button class="blk blk--io" data-shape="3 × 128 × 128" data-note="RGB input, ImageNet-normalised">
+          <span class="blk__n">input</span><span class="blk__c mono">3ch</span>
+        </button>
+        <span class="net__arrow" aria-hidden="true"></span>
+        <button class="blk" data-shape="32 × 64 × 64"  data-note="Conv 3×3 → BatchNorm → ReLU → MaxPool 2×2">
+          <span class="blk__n">block 1</span><span class="blk__c mono">32ch</span><span class="blk__bar" style="--h:20%"></span>
+        </button>
+        <span class="net__arrow" aria-hidden="true"></span>
+        <button class="blk" data-shape="64 × 32 × 32"  data-note="Conv 3×3 → BatchNorm → ReLU → MaxPool 2×2">
+          <span class="blk__n">block 2</span><span class="blk__c mono">64ch</span><span class="blk__bar" style="--h:34%"></span>
+        </button>
+        <span class="net__arrow" aria-hidden="true"></span>
+        <button class="blk" data-shape="128 × 16 × 16" data-note="Conv 3×3 → BatchNorm → ReLU → MaxPool 2×2">
+          <span class="blk__n">block 3</span><span class="blk__c mono">128ch</span><span class="blk__bar" style="--h:52%"></span>
+        </button>
+        <span class="net__arrow" aria-hidden="true"></span>
+        <button class="blk" data-shape="256 × 8 × 8"   data-note="Conv 3×3 → BatchNorm → ReLU → MaxPool 2×2">
+          <span class="blk__n">block 4</span><span class="blk__c mono">256ch</span><span class="blk__bar" style="--h:72%"></span>
+        </button>
+        <span class="net__arrow" aria-hidden="true"></span>
+        <button class="blk blk--cam" data-shape="512 × 4 × 4" data-note="Last conv map — this is the layer Grad-CAM reads">
+          <span class="blk__n">block 5</span><span class="blk__c mono">512ch</span><span class="blk__bar" style="--h:100%"></span>
+          <span class="blk__flag">Grad-CAM tap</span>
+        </button>
+        <span class="net__arrow" aria-hidden="true"></span>
+        <button class="blk blk--fc" data-shape="256" data-note="Flatten 8192 → Linear → ReLU → Dropout 0.5">
+          <span class="blk__n">dense</span><span class="blk__c mono">256</span>
+        </button>
+        <span class="net__arrow" aria-hidden="true"></span>
+        <button class="blk blk--io" data-shape="2" data-note="Logits → softmax → organic / recyclable">
+          <span class="blk__n">output</span><span class="blk__c mono">2</span>
+        </button>
+      </div>
+
+      <div class="net__probe" id="netProbe">
+        <span class="net__probeLbl">tensor</span>
+        <span class="net__probeShape mono" id="probeShape">3 × 128 × 128</span>
+        <span class="net__probeNote" id="probeNote">Hover a block to inspect the tensor it produces.</span>
+      </div>
+    </div>
+
+    <dl class="specs">
+      <div><dt>Optimiser</dt><dd class="mono">Adam · wd 1e-4</dd></div>
+      <div><dt>Schedule</dt><dd class="mono">StepLR · γ 0.5</dd></div>
+      <div><dt>Loss</dt><dd class="mono">CrossEntropy</dd></div>
+      <div><dt>Batch</dt><dd class="mono">32</dd></div>
+      <div><dt>Augment</dt><dd class="mono">flip · rot15 · jitter</dd></div>
+      <div><dt>Params</dt><dd class="mono">3.62 M</dd></div>
+    </dl>
+  </div>
+</section>
+
+<!-- ══════════════ RESEARCH GAPS ══════════════ -->
+<section class="sec" id="gaps">
+  <div class="sec__rail"><span class="sec__idx">04</span><span class="sec__rule"></span><span class="sec__tag">literature</span></div>
+
+  <div class="sec__body">
+    <header class="sec__head">
+      <h2>What 25 papers left open.</h2>
+      <p>Five gaps came out of the review. Two of them this build actually closes; the other three
+         are the roadmap. Click a gap to open it.</p>
+    </header>
+
+    <ol class="gaps" id="gapList">
+      <li class="gap" data-status="open">
+        <button class="gap__bar" aria-expanded="false">
+          <span class="gap__no mono">G1</span>
+          <span class="gap__name">No unified multi-category system</span>
+          <span class="gap__pill" data-st="open">roadmap</span>
+        </button>
+        <div class="gap__panel">
+          <p>Paper #30 classifies organic vs recyclable only (2 classes). Paper #10 handles e-waste
+             only (77 classes). Nothing merges the two into one decision surface, so a deployment
+             has to run two models and reconcile them.</p>
+          <p class="gap__refs"><span class="mono">refs</span> #30 · #10 · #2</p>
+        </div>
+      </li>
+
+      <li class="gap" data-status="open">
+        <button class="gap__bar" aria-expanded="false">
+          <span class="gap__no mono">G2</span>
+          <span class="gap__name">No Indian waste composition testing</span>
+          <span class="gap__pill" data-st="open">roadmap</span>
+        </button>
+        <div class="gap__panel">
+          <p>Benchmarks come from UK, Ireland and Japan. Indian MSW runs near 60% organic and carries
+             items the Western sets simply do not contain — coconut shells, jute, mixed sachet
+             plastics. Papers #31 and #32 study Indian streams but without any vision model.</p>
+          <p class="gap__refs"><span class="mono">refs</span> #31 · #32 · #21</p>
+        </div>
+      </li>
+
+      <li class="gap" data-status="closed">
+        <button class="gap__bar" aria-expanded="false">
+          <span class="gap__no mono">G3</span>
+          <span class="gap__name">No lightweight mobile-deployable model</span>
+          <span class="gap__pill" data-st="closed">addressed</span>
+        </button>
+        <div class="gap__panel">
+          <p>YOLOv11 in paper #10 needs a GPU. The 1 MB CNN in paper #30 only reaches 80.9%. Neither
+             end is deployable-and-accurate.</p>
+          <p class="gap__did"><b>What this build did:</b> fine-tuned MobileNetV2 to
+             <span class="mono">89.25%</span> at <span class="mono">2.23 M</span> parameters and
+             <span class="mono">8.51 MB</span> — 38% smaller than the baseline CNN, within 1.1 points
+             of it, and running in <span class="mono">~24 ms</span> on CPU.</p>
+          <p class="gap__refs"><span class="mono">refs</span> #10 · #30 · #2</p>
+        </div>
+      </li>
+
+      <li class="gap" data-status="closed">
+        <button class="gap__bar" aria-expanded="false">
+          <span class="gap__no mono">G4</span>
+          <span class="gap__name">Missing explainability</span>
+          <span class="gap__pill" data-st="closed">addressed</span>
+        </button>
+        <div class="gap__panel">
+          <p>Every CNN and YOLO paper in the set is a black box. None uses Grad-CAM, SHAP or LIME —
+             a problem the moment a municipal operator has to trust an automated bin.</p>
+          <p class="gap__did"><b>What this build did:</b> Grad-CAM hooked on the final convolutional
+             block, rendered live in the inspection bay above, so every prediction ships with the
+             evidence behind it.</p>
+          <p class="gap__refs"><span class="mono">refs</span> #30 · #10 · #26</p>
+        </div>
+      </li>
+
+      <li class="gap" data-status="open">
+        <button class="gap__bar" aria-expanded="false">
+          <span class="gap__no mono">G5</span>
+          <span class="gap__name">No IoT + vision integration</span>
+          <span class="gap__pill" data-st="open">roadmap</span>
+        </button>
+        <div class="gap__panel">
+          <p>Paper #10 proposes an edge architecture but never builds it. Paper #5 puts medical waste
+             on a blockchain with no vision layer at all. No end-to-end smart bin exists in the set.</p>
+          <p class="gap__refs"><span class="mono">refs</span> #10 · #5 · #26</p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ══════════════ BIN GUIDE ══════════════ -->
+<section class="sec" id="guide">
+  <div class="sec__rail"><span class="sec__idx">05</span><span class="sec__rule"></span><span class="sec__tag">SBM rules</span></div>
+
+  <div class="sec__body">
+    <header class="sec__head">
+      <h2>Which bin, and why.</h2>
+      <p>Swachh Bharat Mission fixes the colours nationally: green takes wet biodegradable waste,
+         blue takes dry recyclables. The model's two classes map straight onto them.</p>
+    </header>
+
+    <div class="bins">
+      <article class="bin" data-s="o">
+        <header class="bin__head">
+          <span class="bin__chip">Green bin</span>
+          <h3>Wet · biodegradable</h3>
+          <p class="bin__sub">Collected daily · composted or bio-methanated</p>
+        </header>
+        <ul class="bin__items">
+          <li>Kitchen and vegetable scraps</li>
+          <li>Fruit peels, egg shells</li>
+          <li>Used tea leaves and coffee grounds</li>
+          <li>Cooked food waste, leftovers</li>
+          <li>Garden trimmings, flowers, leaves</li>
+          <li>Coconut shells and husk</li>
+        </ul>
+        <p class="bin__rule"><b>Rule of thumb:</b> if it rots within weeks, it is green.</p>
+      </article>
+
+      <article class="bin" data-s="r">
+        <header class="bin__head">
+          <span class="bin__chip">Blue bin</span>
+          <h3>Dry · recyclable</h3>
+          <p class="bin__sub">Collected on alternate days · sorted at MRF</p>
+        </header>
+        <ul class="bin__items">
+          <li>PET bottles and rigid plastics</li>
+          <li>Paper, newspaper, cardboard</li>
+          <li>Glass bottles and jars</li>
+          <li>Aluminium cans, metal tins</li>
+          <li>Tetra Pak cartons (rinsed)</li>
+          <li>Clean cloth and packaging</li>
+        </ul>
+        <p class="bin__rule"><b>Rule of thumb:</b> rinse it, dry it, then it is blue.</p>
+      </article>
+    </div>
+
+    <p class="guide__note">
+      <span class="guide__warn" aria-hidden="true"></span>
+      Sanitary waste, batteries, tube lights, paint and medicines belong in neither bin — they go to a
+      separate hazardous collection. EcoSort does not classify these, and a deployment must route
+      them out before the belt.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════ API ══════════════ -->
+<section class="sec" id="api">
+  <div class="sec__rail"><span class="sec__idx">06</span><span class="sec__rule"></span><span class="sec__tag">interface</span></div>
+
+  <div class="sec__body">
+    <header class="sec__head">
+      <h2>Talk to it directly.</h2>
+      <p>Four endpoints on the Flask server. Send a request and read the raw response.</p>
+    </header>
+
+    <div class="api">
+      <ul class="api__list" id="apiList" role="tablist" aria-label="API endpoints">
+        <li><button role="tab" class="ep is-on" data-path="/api/health" data-method="GET" aria-selected="true">
+          <span class="ep__m" data-m="get">GET</span><code>/api/health</code>
+          <span class="ep__d">Model load state and device</span></button></li>
+        <li><button role="tab" class="ep" data-path="/api/stats" data-method="GET" aria-selected="false">
+          <span class="ep__m" data-m="get">GET</span><code>/api/stats</code>
+          <span class="ep__d">Dataset counts and test metrics</span></button></li>
+        <li><button role="tab" class="ep" data-path="/api/research-gaps" data-method="GET" aria-selected="false">
+          <span class="ep__m" data-m="get">GET</span><code>/api/research-gaps</code>
+          <span class="ep__d">The five gaps with status</span></button></li>
+        <li><button role="tab" class="ep" data-path="/api/predict" data-method="POST" aria-selected="false">
+          <span class="ep__m" data-m="post">POST</span><code>/api/predict</code>
+          <span class="ep__d">multipart image → class, confidence, Grad-CAM</span></button></li>
+      </ul>
+
+      <div class="api__console">
+        <div class="console__bar">
+          <span class="console__path mono" id="conPath">GET /api/health</span>
+          <button class="btn btn--small" id="sendBtn" type="button">Send request</button>
+        </div>
+        <pre class="console__out" id="conOut"><code>Pick an endpoint and press Send.</code></pre>
+        <p class="console__note" id="conNote">POST /api/predict needs an image — load one in the inspection bay first.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot__l">
+    <p class="foot__brand">EcoSort<em>AI</em></p>
+    <p class="foot__by">Project-Based Learning · B.Tech CSE · Symbiosis University</p>
+  </div>
+  <div class="foot__r">
+    <p>Dataset: Sekar, <cite>Waste Classification Data</cite> (Kaggle), 25,077 images.</p>
+    <p>Baseline after Nnamoko et&nbsp;al., <cite>Infrastructures</cite> 7(4):47, 2022.</p>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
