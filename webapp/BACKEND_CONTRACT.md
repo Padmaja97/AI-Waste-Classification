@@ -40,7 +40,7 @@ if the Flask app lives in a different folder from the training code.
 ## `GET /api/health`
 
 ```json
-{ "model_loaded": true, "device": "cpu", "classes": ["Organic", "Recyclable"] }
+{ "model_loaded": true, "device": "cpu", "classes": ["Hazardous", "Non-Recyclable", "Organic", "Recyclable"], "num_classes": 4 }
 ```
 
 Drives the badge in the top-right of the nav. `loaded` or `ok` also accepted instead of `model_loaded`.
@@ -65,9 +65,9 @@ file is missing, which the page renders as an explicit empty state.
 ```json
 {
   "label": "Organic",
-  "class_index": 0,
-  "confidence": 0.9421,
-  "probabilities": { "Organic": 0.9421, "Recyclable": 0.0579 },
+  "class_index": 2,
+  "confidence": 0.8721,
+  "probabilities": { "Hazardous": 0.0112, "Non-Recyclable": 0.0304, "Organic": 0.8721, "Recyclable": 0.0863 },
   "inference_ms": 18.3,
   "gradcam": "data:image/png;base64,iVBORw0KGgo..."
 }

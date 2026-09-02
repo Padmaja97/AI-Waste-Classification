@@ -347,10 +347,10 @@ function paintConfusion() {
 function paintPerClass() {
   const rep = M.report;
   const best = rep.models.find(m => m.name === rep.best) || rep.models[0];
-  const key = { Organic: 'o', Recyclable: 'r' };
+  const keyMap = { Organic: 'o', Recyclable: 'r', Hazardous: 'h', 'Non-Recyclable': 'n' };
 
   $('#pcm').innerHTML = Object.entries(best.per_class).map(([name, v]) => `
-    <div class="pcm__group" data-s="${key[name] || 'o'}">
+    <div class="pcm__group" data-s="${keyMap[name] || 'n'}">
       <p class="pcm__name">${name} <span class="mono">n=${v.support}</span></p>
       ${[['P', v.precision], ['R', v.recall], ['F1', v.f1]].map(([lbl, val]) => `
       <div class="pcm__row">
@@ -360,11 +360,12 @@ function paintPerClass() {
       </div>`).join('')}
     </div>`).join('');
 
-  const o = best.per_class.Organic, r = best.per_class.Recyclable;
-  if (o && r) {
+  const entries = Object.entries(best.per_class);
+  if (entries.length >= 2) {
+    const sorted = entries.sort((a, b) => b[1].recall - a[1].recall);
     $('#pcmFoot').textContent =
-      `Organic recall ${o.recall.toFixed(2)} vs recyclable recall ${r.recall.toFixed(2)}: `
-      + `the model finds organic items more reliably than recyclable ones.`;
+      `Highest recall: ${sorted[0][0]} (${sorted[0][1].recall.toFixed(2)}), `
+      + `lowest: ${sorted[sorted.length - 1][0]} (${sorted[sorted.length - 1][1].recall.toFixed(2)}).`;
   }
 }
 
