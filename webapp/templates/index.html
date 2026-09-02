@@ -66,8 +66,9 @@
     <p class="scope">
       <span class="scope__n mono" id="scopeN">2</span>
       <span class="scope__t">
-        classes only — <b class="t-o">Organic (wet)</b> and <b class="t-r">Recyclable (dry)</b>.
-        This model does not identify individual materials, e-waste categories, or hazardous items.
+        waste categories — <b class="t-o">Organic</b>, <b class="t-r">Recyclable</b>,
+        <b class="t-h">Hazardous</b>, and <b class="t-n">Non-Recyclable</b>.
+        Mapped to Swachh Bharat bin colours: green, blue, red, and black.
       </span>
     </p>
 
@@ -139,6 +140,13 @@
           <canvas class="drop__cam" id="camCanvas" hidden></canvas>
           <video class="drop__video" id="camVideo" playsinline hidden></video>
           <div class="drop__scan" id="scanBeam" hidden></div>
+          <div class="live-overlay" id="liveOverlay" hidden>
+            <div class="live-badge"><span class="live-dot"></span>LIVE</div>
+            <div class="live-result" id="liveResult">
+              <span class="live-class" id="liveClass">Scanning...</span>
+              <span class="live-conf" id="liveConf"></span>
+            </div>
+          </div>
         </div>
 
         <div class="intake__tools">
@@ -147,6 +155,10 @@
             Camera
           </button>
           <button class="chip chip--act" id="shotBtn" type="button" hidden>Capture frame</button>
+          <button class="chip chip--act chip--live" id="liveBtn" type="button">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4" fill="#dc2626"/></svg>
+            Live Scan
+          </button>
           <button class="chip chip--act" id="clearBtn" type="button" hidden>Clear</button>
         </div>
 
@@ -161,7 +173,7 @@
       <div class="bay__verdict" id="verdictPane" data-state="idle">
 
         <div class="verdict__idle" id="verdictIdle">
-          <div class="idle__streams">
+          <div class="idle__streams idle__streams--4">
             <div class="idle__stream" data-s="o">
               <span class="idle__pct">—</span>
               <span class="idle__name">Organic · wet</span>
@@ -169,6 +181,14 @@
             <div class="idle__stream" data-s="r">
               <span class="idle__pct">—</span>
               <span class="idle__name">Recyclable · dry</span>
+            </div>
+            <div class="idle__stream" data-s="h">
+              <span class="idle__pct">—</span>
+              <span class="idle__name">Hazardous</span>
+            </div>
+            <div class="idle__stream" data-s="n">
+              <span class="idle__pct">—</span>
+              <span class="idle__name">Non-Recyclable</span>
             </div>
           </div>
           <p class="idle__msg">Waiting for an item.</p>
@@ -198,14 +218,22 @@
             </div>
           </div>
 
-          <div class="probs">
+          <div class="probs" id="probs">
             <div class="prob" data-s="o">
-              <div class="prob__head"><span>Organic</span><b id="pOrganic">0.0%</b></div>
-              <div class="prob__track"><i id="barOrganic"></i></div>
+              <div class="prob__head"><span>Organic</span><b>—</b></div>
+              <div class="prob__track"><i></i></div>
             </div>
             <div class="prob" data-s="r">
-              <div class="prob__head"><span>Recyclable</span><b id="pRecycle">0.0%</b></div>
-              <div class="prob__track"><i id="barRecycle"></i></div>
+              <div class="prob__head"><span>Recyclable</span><b>—</b></div>
+              <div class="prob__track"><i></i></div>
+            </div>
+            <div class="prob" data-s="h">
+              <div class="prob__head"><span>Hazardous</span><b>—</b></div>
+              <div class="prob__track"><i></i></div>
+            </div>
+            <div class="prob" data-s="n">
+              <div class="prob__head"><span>Non-Recyclable</span><b>—</b></div>
+              <div class="prob__track"><i></i></div>
             </div>
           </div>
 
@@ -477,7 +505,7 @@
       </p>
     </header>
 
-    <div class="bins">
+    <div class="bins bins--4">
       <article class="bin" data-s="o">
         <header class="bin__head">
           <span class="bin__chip">Green bin</span>
@@ -511,13 +539,47 @@
         </ul>
         <p class="bin__rule"><b>Rule of thumb:</b> rinse it, dry it, then it is blue.</p>
       </article>
+
+      <article class="bin" data-s="h">
+        <header class="bin__head">
+          <span class="bin__chip">Red / separate</span>
+          <h3>Hazardous</h3>
+          <p class="bin__sub">Separate collection · authorised recycler</p>
+        </header>
+        <ul class="bin__items">
+          <li>Batteries (AA, lithium, car)</li>
+          <li>E-waste: phones, chargers, cables</li>
+          <li>Tube lights, CFLs, LEDs</li>
+          <li>Paints, solvents, pesticides</li>
+          <li>Medicines, syringes, thermometers</li>
+          <li>Motor oil, aerosol cans</li>
+        </ul>
+        <p class="bin__rule"><b>Rule of thumb:</b> if it can leak, burn, or corrode, it is hazardous.</p>
+      </article>
+
+      <article class="bin" data-s="n">
+        <header class="bin__head">
+          <span class="bin__chip">Black bin</span>
+          <h3>Non-Recyclable</h3>
+          <p class="bin__sub">Landfill / incineration · minimise this stream</p>
+        </header>
+        <ul class="bin__items">
+          <li>Soiled or multi-layer packaging</li>
+          <li>Diapers and sanitary products</li>
+          <li>Broken ceramics, mirrors</li>
+          <li>Used shoes, worn-out textiles</li>
+          <li>Thermocol and styrofoam</li>
+          <li>Mixed-material sachets</li>
+        </ul>
+        <p class="bin__rule"><b>Rule of thumb:</b> if no bin above takes it, it is black.</p>
+      </article>
     </div>
 
     <p class="guide__note">
       <span class="guide__warn" aria-hidden="true"></span>
-      Sanitary waste, batteries, tube lights, paint, medicines and e-waste belong in neither bin —
-      they go to separate hazardous collection. <b>EcoSort cannot detect these.</b> It will force any
-      such item into organic or recyclable, so a real deployment must route them out before the belt.
+      EcoSort classifies into four categories but cannot identify individual items within each.
+      Always verify hazardous items before disposal — incorrect routing of batteries or chemicals
+      is a safety risk.
     </p>
   </div>
 </section>

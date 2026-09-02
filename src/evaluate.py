@@ -23,7 +23,7 @@ from sklearn.metrics import (auc, classification_report, confusion_matrix,
                              precision_recall_fscore_support, roc_curve)
 
 from .common import (
-    CLASS_NAMES, IMAGENET_MEAN, IMAGENET_STD, WasteClassifierCNN,
+    CLASS_NAMES, DIR_TO_NAME, IMAGENET_MEAN, IMAGENET_STD, WasteClassifierCNN,
     build_mobilenet, build_resnet18, count_params, evaluate, load_config,
     make_loaders, print_banner, size_mb,
 )
@@ -87,30 +87,49 @@ def plot_comparison(rows, out_path: str) -> None:
     plt.savefig(out_path, dpi=150); plt.close(fig)
 
 
-def plot_roc_and_perclass(best_name: str, best_res: dict, out_path: str) -> None:
+def plot_roc_and_perclass(best_name: str, best_res: dict, out_path: str, class_names: list[str] | None = None) -> None:
+    if class_names is None:
+        class_names = CLASS_NAMES
+    n_cls = len(class_names)
     y_true = best_res["y_true"]; y_pred = best_res["y_pred"]
-    fpr, tpr, _ = roc_curve(y_true, best_res["y_prob"][:, 1])
-    roc_auc = auc(fpr, tpr)
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    axes[0].plot(fpr, tpr, label=f"{best_name} (AUC = {roc_auc:.3f})")
+
+    if n_cls == 2:
+        fpr, tpr, _ = roc_curve(y_true, best_res["y_prob"][:, 1])
+        roc_auc = auc(fpr, tpr)
+        axes[0].plot(fpr, tpr, label=f"{best_name} (AUC = {roc_auc:.3f})")
+        axes[0].set_title(f"ROC Curve — {class_names[1]} class")
+    else:
+        from sklearn.preprocessing import label_binarize
+        y_bin = label_binarize(y_true, classes=list(range(n_cls)))
+        for i in range(n_cls):
+            fpr, tpr, _ = roc_curve(y_bin[:, i], best_res["y_prob"][:, i])
+            roc_auc = auc(fpr, tpr)
+            axes[0].plot(fpr, tpr, label=f"{class_names[i]} (AUC={roc_auc:.3f})")
+        axes[0].set_title(f"ROC Curves (one-vs-rest)")
     axes[0].plot([0, 1], [0, 1], "k--", alpha=0.5)
     axes[0].set_xlabel("False Positive Rate"); axes[0].set_ylabel("True Positive Rate")
-    axes[0].set_title("ROC Curve — Recyclable class"); axes[0].legend(); axes[0].grid(alpha=0.3)
+    axes[0].legend(); axes[0].grid(alpha=0.3)
 
-    prec_c, rec_c, f1_c, _ = precision_recall_fscore_support(y_true, y_pred, labels=[0, 1], zero_division=0)
-    x = np.arange(2); w = 0.25
+    labels = list(range(n_cls))
+    prec_c, rec_c, f1_c, _ = precision_recall_fscore_support(y_true, y_pred, labels=labels, zero_division=0)
+    x = np.arange(n_cls); w = 0.25
     axes[1].bar(x - w, prec_c, w, label="Precision")
     axes[1].bar(x, rec_c, w, label="Recall")
     axes[1].bar(x + w, f1_c, w, label="F1")
-    axes[1].set_xticks(x); axes[1].set_xticklabels([f"{CLASS_NAMES[0]} (O)", f"{CLASS_NAMES[1]} (R)"])
+    dir_keys = sorted(k for k, v in DIR_TO_NAME.items() if v in class_names)
+    tick_labels = [f"{class_names[i]} ({dir_keys[i]})" for i in range(n_cls)]
+    axes[1].set_xticks(x); axes[1].set_xticklabels(tick_labels, rotation=15 if n_cls > 2 else 0)
     axes[1].set_ylim(0, 1.05); axes[1].set_title(f"Per-class metrics — {best_name}")
     axes[1].legend(); axes[1].grid(axis="y", alpha=0.3)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150); plt.close(fig)
 
 
-def plot_gradcam(model: nn.Module, target_layer: nn.Module, test_ds, device, out_path: str, n: int = 8) -> None:
+def plot_gradcam(model: nn.Module, target_layer: nn.Module, test_ds, device, out_path: str, class_names: list[str] | None = None, n: int = 8) -> None:
+    if class_names is None:
+        class_names = CLASS_NAMES
     gradcam = GradCAM(model, target_layer)
     idxs = np.random.RandomState(42).choice(len(test_ds), size=n, replace=False)
     rows = (n + 3) // 4
@@ -121,7 +140,9 @@ def plot_gradcam(model: nn.Module, target_layer: nn.Module, test_ds, device, out
         ax.imshow(denorm(x))
         ax.imshow(cam, cmap="jet", alpha=0.45)
         color = "green" if pred_idx == y else "red"
-        ax.set_title(f"True: {CLASS_NAMES[y]}\nPred: {CLASS_NAMES[pred_idx]} ({conf:.2f})",
+        true_name = class_names[y] if y < len(class_names) else f"class_{y}"
+        pred_name = class_names[pred_idx] if pred_idx < len(class_names) else f"class_{pred_idx}"
+        ax.set_title(f"True: {true_name}\nPred: {pred_name} ({conf:.2f})",
                      color=color, fontsize=10)
         ax.axis("off")
     plt.suptitle("Grad-CAM heatmaps — MobileNetV2", fontsize=14)
@@ -161,16 +182,17 @@ def benchmark_latency(model: nn.Module, device, img_size: int, runs: int = 60, w
     }
 
 
-def _per_class(y_true, y_pred) -> dict:
-    p, r, f, s = precision_recall_fscore_support(y_true, y_pred, labels=[0, 1], zero_division=0)
+def _per_class(y_true, y_pred, class_names: list[str]) -> dict:
+    labels = list(range(len(class_names)))
+    p, r, f, s = precision_recall_fscore_support(y_true, y_pred, labels=labels, zero_division=0)
     return {
-        CLASS_NAMES[i]: {
+        class_names[i]: {
             "precision": round(float(p[i]), 4),
             "recall": round(float(r[i]), 4),
             "f1": round(float(f[i]), 4),
             "support": int(s[i]),
         }
-        for i in (0, 1)
+        for i in labels
     }
 
 
@@ -196,11 +218,18 @@ def main() -> None:
     # --- baseline ---
     if not os.path.exists(cfg.baseline_pth):
         raise FileNotFoundError(f"Baseline weights not found at {cfg.baseline_pth}")
-    baseline = WasteClassifierCNN().to(cfg.device)
+    nc = cfg.num_classes
+    cnames = cfg.class_names
+
+    baseline = WasteClassifierCNN(num_classes=nc).to(cfg.device)
     state = torch.load(cfg.baseline_pth, map_location=cfg.device)
     if isinstance(state, dict) and "state_dict" in state:
         state = state["state_dict"]
-    baseline.load_state_dict(state)
+    try:
+        baseline.load_state_dict(state)
+    except RuntimeError:
+        print(f"Baseline weights are for a different class count — retraining needed.")
+        baseline = WasteClassifierCNN(num_classes=nc).to(cfg.device)
     baseline_res = evaluate(baseline, test_loader_128, cfg.device, nn.CrossEntropyLoss())
     print(f"Baseline CNN — acc={baseline_res['acc']:.4f}  f1={baseline_res['f1']:.4f}")
 
@@ -210,12 +239,12 @@ def main() -> None:
     if not os.path.exists(mob_pth) or not os.path.exists(res_pth):
         raise FileNotFoundError(f"Run `python -m src.train` first (need {mob_pth} and {res_pth}).")
 
-    mobilenet = build_mobilenet().to(cfg.device)
+    mobilenet = build_mobilenet(num_classes=nc).to(cfg.device)
     mobilenet.load_state_dict(torch.load(mob_pth, map_location=cfg.device))
     mob_res = evaluate(mobilenet, test_loader_tx, cfg.device, nn.CrossEntropyLoss())
     print(f"MobileNetV2 — acc={mob_res['acc']:.4f}  f1={mob_res['f1']:.4f}")
 
-    resnet = build_resnet18().to(cfg.device)
+    resnet = build_resnet18(num_classes=nc).to(cfg.device)
     resnet.load_state_dict(torch.load(res_pth, map_location=cfg.device))
     res_res = evaluate(resnet, test_loader_tx, cfg.device, nn.CrossEntropyLoss())
     print(f"ResNet18    — acc={res_res['acc']:.4f}  f1={res_res['f1']:.4f}")
@@ -249,9 +278,11 @@ def main() -> None:
         ("ResNet18", "resnet", resnet, res_res, res_pth, cfg.img_size_transfer),
     ]
 
+    cls_labels = list(range(nc))
+
     models_out = []
     for name, key, mdl, res, pth, isize in entries:
-        cmatrix = confusion_matrix(res["y_true"], res["y_pred"], labels=[0, 1])
+        cmatrix = confusion_matrix(res["y_true"], res["y_pred"], labels=cls_labels)
         lat = benchmark_latency(mdl, cfg.device, isize)
         print(f"  {name:<16} median {lat['median_ms']:>7.2f} ms   p95 {lat['p95_ms']:>7.2f} ms")
         models_out.append({
@@ -264,25 +295,26 @@ def main() -> None:
             "precision": round(float(res["precision"]), 4),
             "recall": round(float(res["recall"]), 4),
             "f1": round(float(res["f1"]), 4),
-            "per_class": _per_class(res["y_true"], res["y_pred"]),
+            "per_class": _per_class(res["y_true"], res["y_pred"], cnames),
             "confusion": cmatrix.tolist(),
             "latency": lat,
         })
 
-    # true on-disk dataset counts, independent of any subsetting
     def _count(split: str) -> dict:
         root = os.path.join(cfg.dataset_dir, split)
         out = {}
-        for cls_dir, cls_name in (("O", CLASS_NAMES[0]), ("R", CLASS_NAMES[1])):
-            p = os.path.join(root, cls_dir)
-            out[cls_name] = len(os.listdir(p)) if os.path.isdir(p) else 0
+        for cls_dir in sorted(DIR_TO_NAME.keys()):
+            cls_name = DIR_TO_NAME[cls_dir]
+            if cls_name in cnames:
+                p = os.path.join(root, cls_dir)
+                out[cls_name] = len(os.listdir(p)) if os.path.isdir(p) else 0
         out["total"] = sum(v for k, v in out.items() if k != "total")
         return out
 
     report = {
         "generated_at": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),
-        "classes": CLASS_NAMES,
-        "num_classes": len(CLASS_NAMES),
+        "classes": cnames,
+        "num_classes": nc,
         "run": {
             "quick_mode": bool(cfg.quick),
             "device": str(cfg.device),
@@ -320,14 +352,14 @@ def main() -> None:
 
     # --- ROC + per-class on best transfer model ---
     best_name, best_res = ("MobileNetV2", mob_res) if mob_res["acc"] >= res_res["acc"] else ("ResNet18", res_res)
-    plot_roc_and_perclass(best_name, best_res, os.path.join(cfg.out_dir, "09_roc_and_per_class.png"))
+    plot_roc_and_perclass(best_name, best_res, os.path.join(cfg.out_dir, "09_roc_and_per_class.png"), cnames)
     print(f"\nClassification report ({best_name}):")
-    print(classification_report(best_res["y_true"], best_res["y_pred"], target_names=CLASS_NAMES, digits=4))
+    print(classification_report(best_res["y_true"], best_res["y_pred"], target_names=cnames, digits=4))
 
     # --- Grad-CAM on MobileNetV2 ---
     test_ds = _underlying_dataset(test_loader_tx)
     plot_gradcam(mobilenet, mobilenet.features[-1], test_ds, cfg.device,
-                 os.path.join(cfg.out_dir, "10_gradcam.png"))
+                 os.path.join(cfg.out_dir, "10_gradcam.png"), cnames)
 
     print("Done. Charts + JSON in:", cfg.out_dir)
 

@@ -11,10 +11,19 @@ const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const C = {
   organic: '#3FBF6E',
   recycle: '#2E9FE0',
+  hazard:  '#E8734D',
+  nonrec:  '#9B8CA3',
   signal:  '#E8A33D',
   line:    '#1E2B28',
   muted:   '#7C918B',
   faint:   '#4E605B',
+};
+
+const CLASS_META = {
+  'Organic':          { color: C.organic, key: 'o', bin: 'Route to the <strong style="color:' + C.organic + '">green bin</strong> — wet, biodegradable.' },
+  'Recyclable':       { color: C.recycle, key: 'r', bin: 'Route to the <strong style="color:' + C.recycle + '">blue bin</strong> — dry, recyclable.' },
+  'Hazardous':        { color: C.hazard,  key: 'h', bin: 'Separate collection required — <strong style="color:' + C.hazard + '">batteries, electronics, chemicals</strong>.' },
+  'Non-Recyclable':   { color: C.nonrec,  key: 'n', bin: 'Route to the <strong style="color:' + C.nonrec + '">black bin</strong> — non-recyclable, non-biodegradable.' },
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -588,24 +597,50 @@ async function classify() {
   render(result);
 }
 
-/* Accept a few reasonable response shapes so this survives backend tweaks. */
+/* Accept a few reasonable response shapes so this survives backend tweaks.
+   Works for 2-class (Organic/Recyclable) or N-class responses. */
 function normalise(j) {
-  const probs = j.probabilities || j.probs || {};
-  let pO = probs.Organic ?? probs.organic ?? probs.O;
-  let pR = probs.Recyclable ?? probs.recyclable ?? probs.R;
+  const raw = j.probabilities || j.probs || {};
+  const aliases = {
+    'Organic':        ['Organic', 'organic', 'O'],
+    'Recyclable':     ['Recyclable', 'recyclable', 'R'],
+    'Hazardous':      ['Hazardous', 'hazardous', 'H'],
+    'Non-Recyclable': ['Non-Recyclable', 'non_recyclable', 'N'],
+  };
 
-  if (pO == null || pR == null) {
-    const conf = j.confidence ?? j.score ?? 0;
-    const isO = (j.label ?? j.class ?? j.prediction ?? '').toString().toLowerCase().startsWith('o')
-             || j.class_index === 0;
-    pO = isO ? conf : 1 - conf;
-    pR = 1 - pO;
+  const probs = {};
+  for (const [name, keys] of Object.entries(aliases)) {
+    for (const k of keys) {
+      if (raw[k] != null) { probs[name] = raw[k]; break; }
+    }
   }
-  if (pO > 1 || pR > 1) { pO /= 100; pR /= 100; }
+
+  if (Object.keys(probs).length < 2) {
+    const conf = j.confidence ?? j.score ?? 0;
+    const lbl = (j.label ?? j.class ?? j.prediction ?? '').toString();
+    const matched = Object.keys(CLASS_META).find(n => lbl.toLowerCase().startsWith(n.toLowerCase().slice(0, 3)));
+    if (matched) {
+      probs[matched] = conf;
+      const rest = Object.keys(CLASS_META).filter(n => n !== matched);
+      const share = (1 - conf) / rest.length;
+      rest.forEach(n => { probs[n] = share; });
+    } else {
+      probs['Organic'] = conf;
+      probs['Recyclable'] = 1 - conf;
+    }
+  }
+
+  const maxV = Math.max(...Object.values(probs));
+  if (maxV > 1) for (const k of Object.keys(probs)) probs[k] /= 100;
+
+  const label = Object.entries(probs).sort((a, b) => b[1] - a[1])[0][0];
 
   return {
-    pO, pR,
-    label:   pO >= pR ? 'Organic' : 'Recyclable',
+    probs,
+    pO: probs['Organic'] ?? 0,
+    pR: probs['Recyclable'] ?? 0,
+    label,
+    confidence: Math.max(...Object.values(probs)),
     inferMs: j.inference_ms ?? j.inferMs ?? j.latency_ms ?? null,
     gradcam: j.gradcam ?? j.grad_cam ?? j.heatmap ?? null,
     image:   j.image ?? bay.dataUrl,
@@ -615,15 +650,13 @@ function normalise(j) {
 function render(r) {
   setPaneState('out');
 
-  const isO = r.label === 'Organic';
-  const conf = Math.max(r.pO, r.pR);
-  const accent = isO ? C.organic : C.recycle;
+  const meta = CLASS_META[r.label] || { color: C.muted, key: 'n', bin: '' };
+  const conf = r.confidence;
+  const accent = meta.color;
 
   $('#outClass').textContent = r.label;
   $('#outClass').style.color = accent;
-  $('#outBin').innerHTML = isO
-    ? 'Route to the <strong style="color:' + C.organic + '">green bin</strong> — wet, biodegradable.'
-    : 'Route to the <strong style="color:' + C.recycle + '">blue bin</strong> — dry, recyclable.';
+  $('#outBin').innerHTML = meta.bin;
 
   // ring
   const ring = $('#ringFill');
@@ -643,13 +676,17 @@ function render(r) {
     requestAnimationFrame(tick);
   }
 
-  // probability bars
-  $('#pOrganic').textContent = (r.pO * 100).toFixed(1) + '%';
-  $('#pRecycle').textContent = (r.pR * 100).toFixed(1) + '%';
-  requestAnimationFrame(() => {
-    $('#barOrganic').style.width = (r.pO * 100) + '%';
-    $('#barRecycle').style.width = (r.pR * 100) + '%';
-  });
+  // dynamic probability bars for N classes
+  const probsEl = $('#probs');
+  probsEl.innerHTML = Object.entries(r.probs)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, prob]) => {
+      const m = CLASS_META[name] || { color: C.muted, key: 'n' };
+      return `<div class="prob" data-s="${m.key}">
+        <div class="prob__head"><span>${name}</span><b style="color:${m.color}">${(prob * 100).toFixed(1)}%</b></div>
+        <div class="prob__track"><i style="width:${(prob * 100)}%;background:${m.color}"></i></div>
+      </div>`;
+    }).join('');
 
   $('#inferMs').textContent = r.inferMs != null ? `${r.inferMs} ms` : '— ms';
 
@@ -695,6 +732,7 @@ function initBay() {
   $('#clearBtn').addEventListener('click', e => { e.stopPropagation(); clearBay(); });
   $('#camBtn').addEventListener('click', e => { e.stopPropagation(); bay.stream ? stopCam() : startCam(); });
   $('#shotBtn').addEventListener('click', e => { e.stopPropagation(); capture(); });
+  $('#liveBtn').addEventListener('click', e => { e.stopPropagation(); liveActive ? stopLiveScan() : startLiveScan(); });
 
   // Grad-CAM overlay slider
   const mix = $('#camMix');
@@ -749,6 +787,67 @@ function capture() {
     stopCam();
     readFile(new File([blob], 'capture.png', { type: 'image/png' }));
   }, 'image/png');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   6b · Live Scan — continuous real-time classification
+   ───────────────────────────────────────────────────────────── */
+let liveInterval = null;
+let liveActive = false;
+let liveBusy = false;
+
+async function startLiveScan() {
+  if (!bay.stream) await startCam();
+  if (!bay.stream) return;
+
+  liveActive = true;
+  $('#liveOverlay').hidden = false;
+  $('#liveBtn').innerHTML = '<svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor"/></svg> Stop Live';
+  $('#liveBtn').classList.add('is-live');
+  $('#shotBtn').hidden = true;
+  toast('Live scan active — point camera at waste items.', 'info');
+
+  liveClassify();
+  liveInterval = setInterval(liveClassify, 1500);
+}
+
+function stopLiveScan() {
+  liveActive = false;
+  clearInterval(liveInterval);
+  liveInterval = null;
+  $('#liveOverlay').hidden = true;
+  $('#liveBtn').innerHTML = '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4" fill="#dc2626"/></svg> Live Scan';
+  $('#liveBtn').classList.remove('is-live');
+  stopCam();
+}
+
+async function liveClassify() {
+  if (!bay.stream || !liveActive || liveBusy) return;
+  liveBusy = true;
+
+  const v = $('#camVideo'), cv = $('#camCanvas');
+  cv.width = v.videoWidth; cv.height = v.videoHeight;
+  cv.getContext('2d').drawImage(v, 0, 0);
+
+  try {
+    const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.8));
+    const fd = new FormData();
+    fd.append('image', new File([blob], 'live.jpg', { type: 'image/jpeg' }));
+
+    const res = await fetch('/api/predict', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error();
+    const result = normalise(await res.json());
+
+    if (!liveActive) { liveBusy = false; return; }
+
+    const meta = CLASS_META[result.label] || { color: C.muted };
+    $('#liveClass').textContent = result.label;
+    $('#liveClass').style.color = meta.color;
+    $('#liveConf').textContent = (result.confidence * 100).toFixed(1) + '%';
+    $('#liveConf').style.color = meta.color;
+  } catch { }
+
+  liveBusy = false;
 }
 
 /* ─────────────────────────────────────────────────────────────

@@ -46,7 +46,7 @@ def _phase2_unfreeze(model: torch.nn.Module, kind: str) -> None:
 
 def train_one(kind: str, cfg, train_loader, test_loader) -> tuple[torch.nn.Module, dict]:
     build = build_mobilenet if kind == "mobilenet" else build_resnet18
-    model = build().to(cfg.device)
+    model = build(num_classes=cfg.num_classes).to(cfg.device)
 
     _phase1_freeze(model, kind)
     print(f"\n[{kind}] Phase 1 — head only (epochs={cfg.epochs_head}, lr=1e-3)")

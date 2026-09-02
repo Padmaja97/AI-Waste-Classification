@@ -24,15 +24,17 @@ from dataclasses import dataclass, field
 
 ORGANIC = "O"
 RECYCLABLE = "R"
-SKIP = None  # ambiguous items excluded
+HAZARDOUS = "H"
+NON_RECYCLABLE = "N"
+SKIP = None  # ambiguous items excluded in 2-class mode
 
-UNIVERSAL_MAP: dict[str, str | None] = {
+# 4-class universal map — nothing is skipped
+UNIVERSAL_MAP_4: dict[str, str] = {
     # organic / wet
     "o": ORGANIC, "O": ORGANIC, "organic": ORGANIC, "Organic": ORGANIC,
     "biological": ORGANIC, "food_waste": ORGANIC, "food": ORGANIC,
     "Food_Organics": ORGANIC, "food_organics": ORGANIC,
     "Vegetation": ORGANIC, "vegetation": ORGANIC,
-    "trash": ORGANIC, "Trash": ORGANIC,
     # recyclable / dry
     "r": RECYCLABLE, "R": RECYCLABLE, "recyclable": RECYCLABLE, "Recyclable": RECYCLABLE,
     "paper": RECYCLABLE, "Paper": RECYCLABLE,
@@ -42,14 +44,24 @@ UNIVERSAL_MAP: dict[str, str | None] = {
     "plastic": RECYCLABLE, "Plastic": RECYCLABLE,
     "brown-glass": RECYCLABLE, "green-glass": RECYCLABLE, "white-glass": RECYCLABLE,
     "aluminum": RECYCLABLE, "tin": RECYCLABLE,
-    # skip (ambiguous / hazardous)
-    "battery": SKIP, "Battery": SKIP,
-    "clothes": SKIP, "Clothes": SKIP,
-    "shoes": SKIP, "Shoes": SKIP,
-    "Textile": SKIP, "textile": SKIP,
-    "Miscellaneous": SKIP, "miscellaneous": SKIP,
-    "electronics": SKIP,
+    # hazardous
+    "battery": HAZARDOUS, "Battery": HAZARDOUS,
+    "electronics": HAZARDOUS,
+    # non-recyclable (not biodegradable, not recyclable)
+    "clothes": NON_RECYCLABLE, "Clothes": NON_RECYCLABLE,
+    "shoes": NON_RECYCLABLE, "Shoes": NON_RECYCLABLE,
+    "Textile": NON_RECYCLABLE, "textile": NON_RECYCLABLE,
+    "trash": NON_RECYCLABLE, "Trash": NON_RECYCLABLE,
+    "Miscellaneous": NON_RECYCLABLE, "miscellaneous": NON_RECYCLABLE,
 }
+
+# 2-class map — hazardous and non-recyclable are skipped
+UNIVERSAL_MAP_2: dict[str, str | None] = {
+    k: (v if v in (ORGANIC, RECYCLABLE) else SKIP)
+    for k, v in UNIVERSAL_MAP_4.items()
+}
+
+UNIVERSAL_MAP = UNIVERSAL_MAP_2  # default
 
 
 @dataclass
@@ -62,6 +74,7 @@ class DatasetInfo:
     test_dir: str = ""
     images_dir: str = ""  # for datasets without train/test split
     class_map: dict[str, str | None] = field(default_factory=dict)
+    class_map_4: dict[str, str | None] = field(default_factory=dict)
 
 
 # ── dataset registry ─────────────────────────────────────────────────────
@@ -77,6 +90,11 @@ DATASETS: dict[str, DatasetInfo] = {
             "metal": RECYCLABLE, "paper": RECYCLABLE,
             "plastic": RECYCLABLE, "trash": ORGANIC,
         },
+        class_map_4={
+            "cardboard": RECYCLABLE, "glass": RECYCLABLE,
+            "metal": RECYCLABLE, "paper": RECYCLABLE,
+            "plastic": RECYCLABLE, "trash": NON_RECYCLABLE,
+        },
     ),
     "garbage12": DatasetInfo(
         name="Garbage Classification (12-class)",
@@ -91,6 +109,16 @@ DATASETS: dict[str, DatasetInfo] = {
             "plastic": RECYCLABLE,
             "battery": SKIP, "clothes": SKIP, "shoes": SKIP,
         },
+        class_map_4={
+            "biological": ORGANIC,
+            "cardboard": RECYCLABLE, "brown-glass": RECYCLABLE,
+            "green-glass": RECYCLABLE, "white-glass": RECYCLABLE,
+            "metal": RECYCLABLE, "paper": RECYCLABLE,
+            "plastic": RECYCLABLE,
+            "battery": HAZARDOUS,
+            "clothes": NON_RECYCLABLE, "shoes": NON_RECYCLABLE,
+            "trash": NON_RECYCLABLE,
+        },
     ),
     "realwaste": DatasetInfo(
         name="RealWaste (9-class)",
@@ -104,6 +132,13 @@ DATASETS: dict[str, DatasetInfo] = {
             "Plastic": RECYCLABLE,
             "Miscellaneous": SKIP, "Textile": SKIP,
         },
+        class_map_4={
+            "Food_Organics": ORGANIC, "Vegetation": ORGANIC,
+            "Cardboard": RECYCLABLE, "Glass": RECYCLABLE,
+            "Metal": RECYCLABLE, "Paper": RECYCLABLE,
+            "Plastic": RECYCLABLE,
+            "Miscellaneous": NON_RECYCLABLE, "Textile": NON_RECYCLABLE,
+        },
     ),
     "waste_v2": DatasetInfo(
         name="Waste Classification v2",
@@ -113,6 +148,7 @@ DATASETS: dict[str, DatasetInfo] = {
         train_dir="TRAIN",
         test_dir="TEST",
         class_map={"O": ORGANIC, "R": RECYCLABLE},
+        class_map_4={"O": ORGANIC, "R": RECYCLABLE},
     ),
     "household": DatasetInfo(
         name="Household Waste (6-class)",
@@ -123,6 +159,11 @@ DATASETS: dict[str, DatasetInfo] = {
             "cardboard": RECYCLABLE, "glass": RECYCLABLE,
             "metal": RECYCLABLE, "paper": RECYCLABLE,
             "plastic": RECYCLABLE, "trash": ORGANIC,
+        },
+        class_map_4={
+            "cardboard": RECYCLABLE, "glass": RECYCLABLE,
+            "metal": RECYCLABLE, "paper": RECYCLABLE,
+            "plastic": RECYCLABLE, "trash": NON_RECYCLABLE,
         },
     ),
 }
@@ -136,7 +177,14 @@ def _list_images(folder: str) -> list[str]:
     return [f for f in os.listdir(folder) if os.path.splitext(f)[1].lower() in IMAGE_EXTS]
 
 
-def _find_class_dirs(root: str, class_map: dict[str, str | None]) -> list[tuple[str, str]]:
+ALL_VALID = {ORGANIC, RECYCLABLE, HAZARDOUS, NON_RECYCLABLE}
+
+
+def _find_class_dirs(
+    root: str,
+    class_map: dict[str, str | None],
+    valid: set[str] = ALL_VALID,
+) -> list[tuple[str, str]]:
     found = []
     if not os.path.isdir(root):
         return found
@@ -145,10 +193,9 @@ def _find_class_dirs(root: str, class_map: dict[str, str | None]) -> list[tuple[
         if not os.path.isdir(full):
             continue
         mapped = class_map.get(entry, UNIVERSAL_MAP.get(entry))
-        if mapped is None:
+        if mapped is None or mapped not in valid:
             continue
-        if mapped in (ORGANIC, RECYCLABLE):
-            found.append((full, mapped))
+        found.append((full, mapped))
     return found
 
 
@@ -159,7 +206,7 @@ def _auto_find_root(base: str, ds: DatasetInfo) -> str | None:
             return candidate
     if os.path.isdir(base):
         entries = os.listdir(base)
-        known_classes = set(ds.class_map.keys())
+        known_classes = set(ds.class_map.keys()) | set(ds.class_map_4.keys())
         if known_classes & set(entries):
             return base
         for e in entries:
@@ -177,31 +224,33 @@ def merge(
     test_ratio: float = 0.2,
     dry_run: bool = False,
     seed: int = 42,
+    num_classes: int = 2,
 ) -> dict[str, int]:
     rng = random.Random(seed)
-    train_o = os.path.join(target_dir, "TRAIN", "O")
-    train_r = os.path.join(target_dir, "TRAIN", "R")
-    test_o = os.path.join(target_dir, "TEST", "O")
-    test_r = os.path.join(target_dir, "TEST", "R")
+    all_classes = ["O", "R"] if num_classes == 2 else ["H", "N", "O", "R"]
+    train_dirs = {c: os.path.join(target_dir, "TRAIN", c) for c in all_classes}
+    test_dirs = {c: os.path.join(target_dir, "TEST", c) for c in all_classes}
 
     if not dry_run:
-        for d in (train_o, train_r, test_o, test_r):
+        for d in list(train_dirs.values()) + list(test_dirs.values()):
             os.makedirs(d, exist_ok=True)
 
     stats: dict[str, int] = {}
     total_added = 0
+
+    valid = set(all_classes)
 
     for ds_key, ds_info in DATASETS.items():
         ds_dir = os.path.join(extra_dir, ds_key)
         if not os.path.isdir(ds_dir):
             continue
 
+        cmap = ds_info.class_map_4 if num_classes == 4 else ds_info.class_map
         print(f"\n{'[DRY RUN] ' if dry_run else ''}Processing: {ds_info.name} ({ds_key}/)")
         added = 0
 
         if ds_info.has_split:
-            for split, target_map in [("TRAIN", {ORGANIC: train_o, RECYCLABLE: train_r}),
-                                       ("TEST", {ORGANIC: test_o, RECYCLABLE: test_r})]:
+            for split, tgt in [("TRAIN", train_dirs), ("TEST", test_dirs)]:
                 split_path = os.path.join(ds_dir, ds_info.train_dir if split == "TRAIN" else ds_info.test_dir)
                 if not os.path.isdir(split_path):
                     sub_entries = os.listdir(ds_dir) if os.path.isdir(ds_dir) else []
@@ -210,12 +259,11 @@ def merge(
                         if os.path.isdir(candidate):
                             split_path = candidate
                             break
-                pairs = _find_class_dirs(split_path, ds_info.class_map)
+                pairs = _find_class_dirs(split_path, cmap, valid)
                 for src_folder, mapped_class in pairs:
                     images = _list_images(src_folder)
-                    target = target_map[mapped_class]
                     for img in images:
-                        dst = os.path.join(target, f"{ds_key}_{img}")
+                        dst = os.path.join(tgt[mapped_class], f"{ds_key}_{img}")
                         if not dry_run and not os.path.exists(dst):
                             shutil.copy2(os.path.join(src_folder, img), dst)
                         added += 1
@@ -224,7 +272,7 @@ def merge(
             if root is None:
                 print(f"  Could not find class folders in {ds_dir}")
                 continue
-            pairs = _find_class_dirs(root, ds_info.class_map)
+            pairs = _find_class_dirs(root, cmap, valid)
             if not pairs:
                 print(f"  No recognized class folders in {root}")
                 print(f"  Found: {os.listdir(root) if os.path.isdir(root) else 'nothing'}")
@@ -236,15 +284,12 @@ def merge(
                 train_imgs = images[:split_idx]
                 test_imgs = images[split_idx:]
 
-                train_target = train_o if mapped_class == ORGANIC else train_r
-                test_target = test_o if mapped_class == ORGANIC else test_r
-
                 for img in train_imgs:
-                    dst = os.path.join(train_target, f"{ds_key}_{img}")
+                    dst = os.path.join(train_dirs[mapped_class], f"{ds_key}_{img}")
                     if not dry_run and not os.path.exists(dst):
                         shutil.copy2(os.path.join(src_folder, img), dst)
                 for img in test_imgs:
-                    dst = os.path.join(test_target, f"{ds_key}_{img}")
+                    dst = os.path.join(test_dirs[mapped_class], f"{ds_key}_{img}")
                     if not dry_run and not os.path.exists(dst):
                         shutil.copy2(os.path.join(src_folder, img), dst)
                 added += len(images)
@@ -256,14 +301,17 @@ def merge(
     return stats
 
 
-def show_counts(dataset_dir: str) -> None:
+DIR_LABELS = {"H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Recyclable"}
+
+
+def show_counts(dataset_dir: str, num_classes: int = 2) -> None:
+    classes = ["O", "R"] if num_classes == 2 else ["H", "N", "O", "R"]
     print("\nCurrent dataset counts:")
     for split in ("TRAIN", "TEST"):
-        for cls in ("O", "R"):
+        for cls in classes:
             p = os.path.join(dataset_dir, split, cls)
             n = len(_list_images(p)) if os.path.isdir(p) else 0
-            label = "Organic" if cls == "O" else "Recyclable"
-            print(f"  {split}/{cls} ({label}): {n:,} images")
+            print(f"  {split}/{cls} ({DIR_LABELS[cls]}): {n:,} images")
 
 
 def main() -> None:
@@ -272,6 +320,8 @@ def main() -> None:
                     help="Folder containing downloaded dataset subfolders")
     ap.add_argument("--target-dir", default="./dataset/DATASET",
                     help="Target dataset directory with TRAIN/TEST structure")
+    ap.add_argument("--classes", type=int, choices=[2, 4], default=4,
+                    help="Number of output classes (2=O/R, 4=H/N/O/R)")
     ap.add_argument("--dry-run", action="store_true",
                     help="Preview what would happen without copying")
     ap.add_argument("--list", action="store_true",
@@ -280,31 +330,36 @@ def main() -> None:
                     help="Show current dataset image counts")
     args = ap.parse_args()
 
+    nc = args.classes
+
     if args.list:
+        label = "4-class (H/N/O/R)" if nc == 4 else "2-class (O/R)"
         print("=" * 65)
-        print("Dataset Registry — download from Kaggle, extract into extra_datasets/<key>/")
+        print(f"Dataset Registry [{label}] — download from Kaggle, extract into extra_datasets/<key>/")
         print("=" * 65)
         for key, ds in DATASETS.items():
+            cmap = ds.class_map_4 if nc == 4 else ds.class_map
             print(f"\n  {key}/")
             print(f"    {ds.name}")
             print(f"    Kaggle: kaggle datasets download -d {ds.slug}")
             print(f"    {ds.desc}")
-            mapping = {k: v for k, v in ds.class_map.items() if v is not None}
-            skipped = [k for k, v in ds.class_map.items() if v is None]
-            o_classes = [k for k, v in mapping.items() if v == ORGANIC]
-            r_classes = [k for k, v in mapping.items() if v == RECYCLABLE]
-            print(f"    Organic  <- {', '.join(o_classes)}")
-            print(f"    Recycle  <- {', '.join(r_classes)}")
+            mapping = {k: v for k, v in cmap.items() if v is not None}
+            skipped = [k for k, v in cmap.items() if v is None]
+            for code, lbl in DIR_LABELS.items():
+                cls_list = [k for k, v in mapping.items() if v == code]
+                if cls_list:
+                    print(f"    {lbl:15s} <- {', '.join(cls_list)}")
             if skipped:
-                print(f"    Skipped  <- {', '.join(skipped)}")
+                print(f"    {'Skipped':15s} <- {', '.join(skipped)}")
         return
 
     if args.counts:
-        show_counts(args.target_dir)
+        show_counts(args.target_dir, nc)
         return
 
+    class_label = "H / N / O / R" if nc == 4 else "Organic / Recyclable"
     print("=" * 60)
-    print("Multi-Dataset Merger — Organic / Recyclable")
+    print(f"Multi-Dataset Merger — {class_label}")
     print("=" * 60)
     print(f"Extra datasets dir : {os.path.abspath(args.extra_dir)}")
     print(f"Target dataset dir : {os.path.abspath(args.target_dir)}")
@@ -328,7 +383,7 @@ def main() -> None:
         return
 
     print(f"\nFound {len(found)} dataset(s): {', '.join(found)}")
-    stats = merge(args.extra_dir, args.target_dir, dry_run=args.dry_run)
+    stats = merge(args.extra_dir, args.target_dir, dry_run=args.dry_run, num_classes=nc)
 
     print("\n" + "=" * 60)
     print("Summary:")
@@ -339,7 +394,7 @@ def main() -> None:
     print(f"  TOTAL added: {total:,} images")
 
     if not args.dry_run:
-        show_counts(args.target_dir)
+        show_counts(args.target_dir, nc)
         print("\nDone! Now retrain: python -m src.train --model both")
 
 

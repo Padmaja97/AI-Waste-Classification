@@ -22,7 +22,19 @@ from torchvision import datasets, models, transforms
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
+
+DIR_TO_NAME = {"H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Recyclable"}
 CLASS_NAMES = ["Organic", "Recyclable"]
+
+
+def detect_classes(dataset_dir: str) -> list[str]:
+    """Auto-detect class names from the TRAIN directory structure."""
+    train_dir = os.path.join(dataset_dir, "TRAIN")
+    if not os.path.isdir(train_dir):
+        return CLASS_NAMES
+    dirs = sorted(d for d in os.listdir(train_dir) if os.path.isdir(os.path.join(train_dir, d)))
+    names = [DIR_TO_NAME[d] for d in dirs if d in DIR_TO_NAME]
+    return names if len(names) >= 2 else CLASS_NAMES
 
 
 @dataclass
@@ -38,6 +50,15 @@ class Config:
     epochs_finetune: int
     subset_train: int | None    # None = use all
     subset_test: int | None
+    class_names: list[str] | None = None
+
+    def __post_init__(self):
+        if self.class_names is None:
+            self.class_names = detect_classes(self.dataset_dir)
+
+    @property
+    def num_classes(self) -> int:
+        return len(self.class_names)
 
     @property
     def train_dir(self) -> str:
@@ -55,8 +76,9 @@ def load_config() -> Config:
         img_size, eh, ef, sub_tr, sub_te = 160, 2, 1, 2000, 800
     else:
         img_size, eh, ef, sub_tr, sub_te = 224, 5, 3, None, None
+    ds_dir = os.environ.get("DATASET_DIR", "./dataset/DATASET")
     return Config(
-        dataset_dir=os.environ.get("DATASET_DIR", "./dataset/DATASET"),
+        dataset_dir=ds_dir,
         out_dir=os.environ.get("OUT_DIR", "./outputs"),
         baseline_pth=os.environ.get("BASELINE_PTH", "./models/best_model.pth"),
         quick=quick or device.type == "cpu",
@@ -67,6 +89,7 @@ def load_config() -> Config:
         epochs_finetune=ef,
         subset_train=sub_tr,
         subset_test=sub_te,
+        class_names=detect_classes(ds_dir),
     )
 
 
@@ -77,6 +100,7 @@ def print_banner(cfg: Config) -> None:
     print(f"Output dir   : {cfg.out_dir}")
     print(f"Baseline pth : {cfg.baseline_pth}")
     print(f"Quick mode   : {cfg.quick}  (img={cfg.img_size_transfer}, epochs={cfg.epochs_head}+{cfg.epochs_finetune})")
+    print(f"Classes ({cfg.num_classes})  : {', '.join(cfg.class_names)}")
     print("=" * 60)
 
 
@@ -115,8 +139,9 @@ def make_loaders(cfg: Config, img_size: int):
     tf_train, tf_eval = make_transforms(img_size)
     train_ds = datasets.ImageFolder(cfg.train_dir, transform=tf_train)
     test_ds = datasets.ImageFolder(cfg.test_dir, transform=tf_eval)
-    if train_ds.classes != ["O", "R"]:
-        print(f"Warning: unexpected class order {train_ds.classes}")
+    expected_dirs = sorted(k for k, v in DIR_TO_NAME.items() if v in cfg.class_names)
+    if train_ds.classes != expected_dirs:
+        print(f"Info: dataset classes {train_ds.classes} (expected {expected_dirs})")
     train_ds = _maybe_subset(train_ds, cfg.subset_train)
     test_ds = _maybe_subset(test_ds, cfg.subset_test)
     num_workers = 2 if cfg.device.type == "cuda" else 0
