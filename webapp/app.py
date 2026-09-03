@@ -184,6 +184,9 @@ def _read_upload() -> Image.Image:
 def _gradcam_png(mdl, x, class_idx, pil_img):
     acts, grads = {}, {}
     layer = gradcam_layer
+    if layer is None:
+        print("Grad-CAM: no target layer set")
+        return None
 
     h1 = layer.register_forward_hook(lambda m, i, o: acts.setdefault("v", o))
     try:
@@ -200,6 +203,10 @@ def _gradcam_png(mdl, x, class_idx, pil_img):
     h2.remove()
     if not was_training:
         mdl.eval()
+
+    if "v" not in grads or "v" not in acts:
+        print(f"Grad-CAM: hooks did not fire (acts={'v' in acts}, grads={'v' in grads})")
+        return None
 
     w = grads["v"].mean(dim=(2, 3), keepdim=True)
     cam = torch.relu((w * acts["v"]).sum(1, keepdim=True))
@@ -259,7 +266,9 @@ def predict():
         x_grad = transform(img).unsqueeze(0).to(DEVICE).requires_grad_(True)
         cam = _gradcam_png(model, x_grad, idx, img)
     except Exception as e:
+        import traceback
         print(f"Grad-CAM error: {e}")
+        traceback.print_exc()
         cam = None
 
     prob_dict = {CLASSES[i]: round(float(probs[i]), 4) for i in range(len(CLASSES))}

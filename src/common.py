@@ -85,8 +85,10 @@ class Config:
 def load_config() -> Config:
     quick = os.environ.get("QUICK", "0") == "1"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if quick or device.type == "cpu":
+    if quick:
         img_size, eh, ef, sub_tr, sub_te = 160, 2, 1, 2000, 800
+    elif device.type == "cpu":
+        img_size, eh, ef, sub_tr, sub_te = 192, 4, 2, 6000, 2000
     else:
         img_size, eh, ef, sub_tr, sub_te = 224, 5, 3, None, None
     ds_dir = os.environ.get("DATASET_DIR", "./dataset/DATASET")
@@ -94,7 +96,7 @@ def load_config() -> Config:
         dataset_dir=ds_dir,
         out_dir=os.environ.get("OUT_DIR", "./outputs"),
         baseline_pth=os.environ.get("BASELINE_PTH", "./models/best_model.pth"),
-        quick=quick or device.type == "cpu",
+        quick=quick,
         device=device,
         batch=32 if device.type == "cuda" else 16,
         img_size_transfer=img_size,
@@ -112,7 +114,8 @@ def print_banner(cfg: Config) -> None:
     print(f"Dataset root : {cfg.dataset_dir}")
     print(f"Output dir   : {cfg.out_dir}")
     print(f"Baseline pth : {cfg.baseline_pth}")
-    print(f"Quick mode   : {cfg.quick}  (img={cfg.img_size_transfer}, epochs={cfg.epochs_head}+{cfg.epochs_finetune})")
+    mode = "QUICK (testing)" if cfg.quick else ("CPU-normal" if cfg.device.type == "cpu" else "GPU-full")
+    print(f"Mode         : {mode}  (img={cfg.img_size_transfer}, epochs={cfg.epochs_head}+{cfg.epochs_finetune}, train={cfg.subset_train or 'ALL'})")
     print(f"Classes ({cfg.num_classes})  : {', '.join(cfg.class_names)}")
     print("=" * 60)
 
