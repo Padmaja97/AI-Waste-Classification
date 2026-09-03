@@ -66,6 +66,12 @@ UNIVERSAL_MAP_5: dict[str, str] = {
     "laptop": E_WASTE, "Laptop": E_WASTE,
     "monitor": E_WASTE, "Monitor": E_WASTE,
     "cable": E_WASTE, "Cable": E_WASTE, "wires": E_WASTE,
+    "Washing Machine": E_WASTE, "washing machine": E_WASTE,
+    "e-waste": E_WASTE, "E-Waste": E_WASTE, "E-waste": E_WASTE,
+    # hazardous (chemicals / paints / pesticides)
+    "pesticides": HAZARDOUS, "Pesticides": HAZARDOUS,
+    "paints": HAZARDOUS, "Paints": HAZARDOUS,
+    "paint": HAZARDOUS, "Paint": HAZARDOUS,
     # non-recyclable
     "clothes": NON_RECYCLABLE, "Clothes": NON_RECYCLABLE,
     "shoes": NON_RECYCLABLE, "Shoes": NON_RECYCLABLE,
@@ -274,7 +280,20 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"}
 def _list_images(folder: str) -> list[str]:
     if not os.path.isdir(folder):
         return []
-    return [f for f in os.listdir(folder) if os.path.splitext(f)[1].lower() in IMAGE_EXTS]
+    direct = [f for f in os.listdir(folder)
+              if os.path.isfile(os.path.join(folder, f))
+              and os.path.splitext(f)[1].lower() in IMAGE_EXTS]
+    if direct:
+        return direct
+    found = []
+    for dirpath, _, filenames in os.walk(folder):
+        if dirpath == folder:
+            continue
+        for f in filenames:
+            if os.path.splitext(f)[1].lower() in IMAGE_EXTS:
+                rel = os.path.relpath(os.path.join(dirpath, f), folder)
+                found.append(rel)
+    return found
 
 
 ALL_VALID = {ORGANIC, RECYCLABLE, HAZARDOUS, E_WASTE, NON_RECYCLABLE}
@@ -320,17 +339,24 @@ def _auto_find_root(base: str, ds: DatasetInfo) -> str | None:
         candidate = os.path.join(base, ds.images_dir)
         if os.path.isdir(candidate):
             return candidate
-    if os.path.isdir(base):
-        entries = os.listdir(base)
-        known_classes = set(ds.class_map.keys()) | set(ds.class_map_4.keys()) | set(ds.class_map_5.keys())
-        if known_classes & set(entries):
-            return base
-        for e in entries:
-            sub = os.path.join(base, e)
-            if os.path.isdir(sub):
-                sub_entries = set(os.listdir(sub))
-                if known_classes & sub_entries:
-                    return sub
+    if not os.path.isdir(base):
+        return base
+    known_classes = set(ds.class_map.keys()) | set(ds.class_map_4.keys()) | set(ds.class_map_5.keys())
+    all_known = known_classes | set(UNIVERSAL_MAP.keys())
+    queue = [base]
+    for _ in range(3):
+        next_queue = []
+        for path in queue:
+            if not os.path.isdir(path):
+                continue
+            entries = os.listdir(path)
+            dir_entries = [e for e in entries if os.path.isdir(os.path.join(path, e))]
+            matches = [e for e in dir_entries if e in all_known]
+            if len(matches) >= 2:
+                return path
+            for e in dir_entries:
+                next_queue.append(os.path.join(path, e))
+        queue = next_queue
     return base
 
 
@@ -389,7 +415,8 @@ def merge(
                 for src_folder, mapped_class in pairs:
                     images = _list_images(src_folder)
                     for img in images:
-                        dst = os.path.join(tgt[mapped_class], f"{ds_key}_{img}")
+                        safe = img.replace(os.sep, "_").replace("/", "_")
+                        dst = os.path.join(tgt[mapped_class], f"{ds_key}_{safe}")
                         if not dry_run and not os.path.exists(dst):
                             shutil.copy2(os.path.join(src_folder, img), dst)
                         added += 1
@@ -411,11 +438,13 @@ def merge(
                 test_imgs = images[split_idx:]
 
                 for img in train_imgs:
-                    dst = os.path.join(train_dirs[mapped_class], f"{ds_key}_{img}")
+                    safe = img.replace(os.sep, "_").replace("/", "_")
+                    dst = os.path.join(train_dirs[mapped_class], f"{ds_key}_{safe}")
                     if not dry_run and not os.path.exists(dst):
                         shutil.copy2(os.path.join(src_folder, img), dst)
                 for img in test_imgs:
-                    dst = os.path.join(test_dirs[mapped_class], f"{ds_key}_{img}")
+                    safe = img.replace(os.sep, "_").replace("/", "_")
+                    dst = os.path.join(test_dirs[mapped_class], f"{ds_key}_{safe}")
                     if not dry_run and not os.path.exists(dst):
                         shutil.copy2(os.path.join(src_folder, img), dst)
                 added += len(images)
