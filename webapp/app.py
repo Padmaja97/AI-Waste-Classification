@@ -44,12 +44,24 @@ register_metrics(app, outputs_dir=OUTPUTS_DIR)
 # ── class config ───────────────────────────────────────────────────
 DIR_TO_NAME = {"H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Recyclable"}
 
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"}
+
+
 def _detect_classes() -> list[str]:
     ds_dir = os.environ.get("DATASET_DIR", os.path.join(PROJECT_ROOT, "dataset", "DATASET"))
     train_dir = os.path.join(ds_dir, "TRAIN")
     if os.path.isdir(train_dir):
         dirs = sorted(d for d in os.listdir(train_dir) if os.path.isdir(os.path.join(train_dir, d)))
-        names = [DIR_TO_NAME[d] for d in dirs if d in DIR_TO_NAME]
+        names = []
+        for d in dirs:
+            if d not in DIR_TO_NAME:
+                continue
+            d_path = os.path.join(train_dir, d)
+            has_imgs = any(os.path.splitext(f)[1].lower() in IMAGE_EXTS
+                          for f in os.listdir(d_path)
+                          if os.path.isfile(os.path.join(d_path, f)))
+            if has_imgs:
+                names.append(DIR_TO_NAME[d])
         if len(names) >= 2:
             return names
     return ["Organic", "Recyclable"]

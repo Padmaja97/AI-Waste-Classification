@@ -15,6 +15,7 @@ import argparse
 import os
 import random
 import shutil
+import zipfile
 from dataclasses import dataclass, field
 
 # ── class mapping: folder-name -> O (Organic) or R (Recyclable) ──────────

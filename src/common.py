@@ -27,13 +27,26 @@ DIR_TO_NAME = {"H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Re
 CLASS_NAMES = ["Organic", "Recyclable"]
 
 
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"}
+
+
+def _has_images(folder: str) -> bool:
+    """Return True if folder contains at least one image file."""
+    if not os.path.isdir(folder):
+        return False
+    return any(os.path.splitext(f)[1].lower() in IMAGE_EXTS
+               for f in os.listdir(folder)
+               if os.path.isfile(os.path.join(folder, f)))
+
+
 def detect_classes(dataset_dir: str) -> list[str]:
-    """Auto-detect class names from the TRAIN directory structure."""
+    """Auto-detect class names from non-empty TRAIN subdirectories."""
     train_dir = os.path.join(dataset_dir, "TRAIN")
     if not os.path.isdir(train_dir):
         return CLASS_NAMES
     dirs = sorted(d for d in os.listdir(train_dir) if os.path.isdir(os.path.join(train_dir, d)))
-    names = [DIR_TO_NAME[d] for d in dirs if d in DIR_TO_NAME]
+    names = [DIR_TO_NAME[d] for d in dirs
+             if d in DIR_TO_NAME and _has_images(os.path.join(train_dir, d))]
     return names if len(names) >= 2 else CLASS_NAMES
 
 
