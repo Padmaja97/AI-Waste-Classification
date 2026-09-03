@@ -212,8 +212,8 @@ def main() -> None:
     print_banner(cfg)
 
     # Baseline needs 128x128; transfer models need the trained size (224 or 160)
-    _, test_loader_128 = make_loaders(cfg, img_size=128)
-    _, test_loader_tx = make_loaders(cfg, img_size=cfg.img_size_transfer)
+    _, test_loader_128, _ = make_loaders(cfg, img_size=128)
+    _, test_loader_tx, _ = make_loaders(cfg, img_size=cfg.img_size_transfer)
 
     # --- baseline ---
     if not os.path.exists(cfg.baseline_pth):

@@ -700,6 +700,58 @@ function render(r) {
   } else {
     heat.hidden = true; none.hidden = false;
   }
+
+  addToHistory(r);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Prediction History
+   ───────────────────────────────────────────────────────────── */
+const historyItems = [];
+
+function addToHistory(r) {
+  historyItems.unshift({
+    label: r.label,
+    confidence: r.confidence,
+    image: r.image,
+    time: new Date(),
+  });
+  if (historyItems.length > 10) historyItems.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = $('#historyList');
+  const clearBtn = $('#historyClear');
+  if (!list) return;
+
+  if (historyItems.length === 0) {
+    list.innerHTML = '<p class="history__empty">No items classified yet.</p>';
+    if (clearBtn) clearBtn.hidden = true;
+    return;
+  }
+
+  if (clearBtn) clearBtn.hidden = false;
+  list.innerHTML = historyItems.map(item => {
+    const meta = CLASS_META[item.label] || { color: C.muted };
+    const ago = timeAgo(item.time);
+    return `<div class="history__item">
+      <img class="history__thumb" src="${item.image || ''}" alt="${item.label}">
+      <div class="history__info">
+        <span class="history__class" style="color:${meta.color}">${item.label}</span>
+        <span class="history__time">${ago}</span>
+      </div>
+      <span class="history__conf" style="color:${meta.color}">${(item.confidence * 100).toFixed(1)}%</span>
+    </div>`;
+  }).join('');
+}
+
+function timeAgo(date) {
+  const s = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ago`;
 }
 
 function initBay() {
@@ -954,6 +1006,9 @@ function boot() {
   initBay();
   initApi();
   initHealth();
+
+  const hc = $('#historyClear');
+  if (hc) hc.addEventListener('click', () => { historyItems.length = 0; renderHistory(); });
   loadMetrics();     // fills every figure on the page
 }
 

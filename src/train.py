@@ -44,17 +44,17 @@ def _phase2_unfreeze(model: torch.nn.Module, kind: str) -> None:
                 p.requires_grad = True
 
 
-def train_one(kind: str, cfg, train_loader, test_loader) -> tuple[torch.nn.Module, dict]:
+def train_one(kind: str, cfg, train_loader, test_loader, class_weights=None) -> tuple[torch.nn.Module, dict]:
     build = build_mobilenet if kind == "mobilenet" else build_resnet18
     model = build(num_classes=cfg.num_classes).to(cfg.device)
 
     _phase1_freeze(model, kind)
     print(f"\n[{kind}] Phase 1 — head only (epochs={cfg.epochs_head}, lr=1e-3)")
-    h1, _ = fit(model, train_loader, test_loader, cfg.epochs_head, 1e-3, cfg.device, tag=f"{kind}/head")
+    h1, _ = fit(model, train_loader, test_loader, cfg.epochs_head, 1e-3, cfg.device, tag=f"{kind}/head", class_weights=class_weights)
 
     _phase2_unfreeze(model, kind)
     print(f"\n[{kind}] Phase 2 — fine-tune (epochs={cfg.epochs_finetune}, lr=1e-4)")
-    h2, _ = fit(model, train_loader, test_loader, cfg.epochs_finetune, 1e-4, cfg.device, tag=f"{kind}/ft")
+    h2, _ = fit(model, train_loader, test_loader, cfg.epochs_finetune, 1e-4, cfg.device, tag=f"{kind}/ft", class_weights=class_weights)
 
     history = {k: h1[k] + h2[k] for k in h1}
     return model, history
@@ -83,14 +83,14 @@ def main() -> None:
     os.makedirs(cfg.out_dir, exist_ok=True)
     print_banner(cfg)
 
-    train_loader, test_loader = make_loaders(cfg, img_size=cfg.img_size_transfer)
+    train_loader, test_loader, class_weights = make_loaders(cfg, img_size=cfg.img_size_transfer)
     print(f"Batches: train={len(train_loader)}  test={len(test_loader)}")
 
     kinds = ["mobilenet", "resnet"] if args.model == "both" else [args.model]
     histories: dict[str, dict] = {}
 
     for kind in kinds:
-        model, hist = train_one(kind, cfg, train_loader, test_loader)
+        model, hist = train_one(kind, cfg, train_loader, test_loader, class_weights=class_weights)
         histories[kind] = hist
         weights_path = os.path.join(cfg.out_dir, f"{kind}_waste.pth")
         torch.save(model.state_dict(), weights_path)

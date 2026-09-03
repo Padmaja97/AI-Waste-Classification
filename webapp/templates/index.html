@@ -119,8 +119,9 @@
   <div class="sec__body">
     <header class="sec__head">
       <h2>Put something on the belt.</h2>
-      <p>Drop an image, paste from your clipboard, or use the camera. The model returns one of two
-         stream assignments, a confidence, and a Grad-CAM heat map of the pixels that drove it.</p>
+      <p>Drop an image, paste from your clipboard, or use the camera. The model classifies waste
+         into Organic, Recyclable, or Non-Recyclable streams with a confidence score and a
+         Grad-CAM heat map of the pixels that drove the decision.</p>
     </header>
 
     <div class="bay">
@@ -212,7 +213,7 @@
               </div>
             </div>
             <div class="out__label">
-              <p class="out__kicker">Stream assignment</p>
+              <p class="out__kicker">Classified stream</p>
               <h3 class="out__class" id="outClass">—</h3>
               <p class="out__bin" id="outBin">—</p>
             </div>
@@ -255,6 +256,15 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ── prediction history ── -->
+    <div class="history" id="historyPanel">
+      <h3 class="history__title">Recent Predictions</h3>
+      <div class="history__list" id="historyList">
+        <p class="history__empty">No items classified yet.</p>
+      </div>
+      <button class="chip chip--act history__clear" id="historyClear" type="button" hidden>Clear History</button>
     </div>
   </div>
 </section>

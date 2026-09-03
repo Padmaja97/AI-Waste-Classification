@@ -186,13 +186,20 @@ def _gradcam_png(mdl, x, class_idx, pil_img):
     layer = gradcam_layer
 
     h1 = layer.register_forward_hook(lambda m, i, o: acts.setdefault("v", o))
-    h2 = layer.register_full_backward_hook(lambda m, gi, go: grads.setdefault("v", go[0]))
+    try:
+        h2 = layer.register_full_backward_hook(lambda m, gi, go: grads.setdefault("v", go[0]))
+    except AttributeError:
+        h2 = layer.register_backward_hook(lambda m, gi, go: grads.setdefault("v", go[0]))
 
+    was_training = mdl.training
+    mdl.train()
     mdl.zero_grad()
     out = mdl(x)
     out[0, class_idx].backward()
     h1.remove()
     h2.remove()
+    if not was_training:
+        mdl.eval()
 
     w = grads["v"].mean(dim=(2, 3), keepdim=True)
     cam = torch.relu((w * acts["v"]).sum(1, keepdim=True))
@@ -251,7 +258,8 @@ def predict():
     try:
         x_grad = transform(img).unsqueeze(0).to(DEVICE).requires_grad_(True)
         cam = _gradcam_png(model, x_grad, idx, img)
-    except Exception:
+    except Exception as e:
+        print(f"Grad-CAM error: {e}")
         cam = None
 
     prob_dict = {CLASSES[i]: round(float(probs[i]), 4) for i in range(len(CLASSES))}

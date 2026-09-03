@@ -398,6 +398,19 @@ kbd{ font-family:var(--m); font-size:.76em; background:var(--panel-2); border:1p
 .cam__slider input{ flex:1; accent-color:var(--organic); height:3px; }
 .cam__slider output{ color:var(--ink-2); min-width:3.2ch; text-align:right; }
 
+/* ═══════════ HISTORY ═══════════ */
+.history{ margin-top:1.5rem; background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:1.25rem; }
+.history__title{ font-family:var(--m); font-size:.68rem; text-transform:uppercase; letter-spacing:.13em; color:var(--muted); margin-bottom:.8rem; }
+.history__list{ display:flex; flex-direction:column; gap:.5rem; max-height:280px; overflow-y:auto; }
+.history__empty{ color:var(--muted); font-size:.85rem; text-align:center; padding:.8rem 0; }
+.history__item{ display:grid; grid-template-columns:48px 1fr auto; gap:.8rem; align-items:center; padding:.6rem .7rem; background:var(--ground-2); border-radius:4px; border:1px solid var(--line); }
+.history__thumb{ width:48px; height:48px; border-radius:3px; object-fit:cover; }
+.history__info{ display:flex; flex-direction:column; gap:.15rem; }
+.history__class{ font-family:var(--b); font-weight:700; font-size:.9rem; }
+.history__time{ font-family:var(--m); font-size:.65rem; color:var(--muted); }
+.history__conf{ font-family:var(--m); font-weight:700; font-size:.9rem; }
+.history__clear{ margin-top:.8rem; }
+
 /* ═══════════ ANALYTICS ═══════════ */
 .tablewrap{ overflow-x:auto; border:1px solid var(--line); border-radius:5px; margin-bottom:1.5rem; }
 .ctable{ width:100%; border-collapse:collapse; min-width:660px; background:var(--panel); }

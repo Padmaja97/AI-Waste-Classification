@@ -155,6 +155,13 @@ def make_loaders(cfg: Config, img_size: int):
     expected_dirs = sorted(k for k, v in DIR_TO_NAME.items() if v in cfg.class_names)
     if train_ds.classes != expected_dirs:
         print(f"Info: dataset classes {train_ds.classes} (expected {expected_dirs})")
+
+    targets = [s[1] for s in train_ds.samples]
+    class_counts = np.bincount(targets, minlength=len(train_ds.classes))
+    weights = len(targets) / (len(train_ds.classes) * class_counts.clip(min=1).astype(float))
+    class_weights = torch.FloatTensor(weights)
+    print(f"Class weights: {', '.join(f'{train_ds.classes[i]}={w:.2f}' for i, w in enumerate(class_weights))}")
+
     train_ds = _maybe_subset(train_ds, cfg.subset_train)
     test_ds = _maybe_subset(test_ds, cfg.subset_test)
     num_workers = 2 if cfg.device.type == "cuda" else 0
@@ -162,7 +169,7 @@ def make_loaders(cfg: Config, img_size: int):
                               num_workers=num_workers, pin_memory=cfg.device.type == "cuda")
     test_loader = DataLoader(test_ds, batch_size=cfg.batch, shuffle=False,
                              num_workers=num_workers, pin_memory=cfg.device.type == "cuda")
-    return train_loader, test_loader
+    return train_loader, test_loader, class_weights
 
 
 # ---------- models ----------
@@ -251,8 +258,8 @@ def evaluate(model, loader, device, criterion=None):
     }
 
 
-def fit(model, train_loader, test_loader, epochs, lr, device, weight_decay=1e-4, tag="model"):
-    criterion = nn.CrossEntropyLoss()
+def fit(model, train_loader, test_loader, epochs, lr, device, weight_decay=1e-4, tag="model", class_weights=None):
+    criterion = nn.CrossEntropyLoss(weight=class_weights.to(device) if class_weights is not None else None)
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = optim.Adam(params, lr=lr, weight_decay=weight_decay)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=max(1, epochs // 3), gamma=0.5)
