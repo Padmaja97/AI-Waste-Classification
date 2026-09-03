@@ -22,7 +22,8 @@ const C = {
 const CLASS_META = {
   'Organic':          { color: C.organic, key: 'o', bin: 'Route to the <strong style="color:' + C.organic + '">green bin</strong> — wet, biodegradable.' },
   'Recyclable':       { color: C.recycle, key: 'r', bin: 'Route to the <strong style="color:' + C.recycle + '">blue bin</strong> — dry, recyclable.' },
-  'Hazardous':        { color: C.hazard,  key: 'h', bin: 'Separate collection required — <strong style="color:' + C.hazard + '">batteries, electronics, chemicals</strong>.' },
+  'E-waste':          { color: C.signal,  key: 'e', bin: 'Separate e-waste collection — <strong style="color:' + C.signal + '">phones, laptops, PCBs, cables</strong>.' },
+  'Hazardous':        { color: C.hazard,  key: 'h', bin: 'Separate collection required — <strong style="color:' + C.hazard + '">batteries, chemicals, paints</strong>.' },
   'Non-Recyclable':   { color: C.nonrec,  key: 'n', bin: 'Route to the <strong style="color:' + C.nonrec + '">black bin</strong> — non-recyclable, non-biodegradable.' },
 };
 
@@ -347,7 +348,7 @@ function paintConfusion() {
 function paintPerClass() {
   const rep = M.report;
   const best = rep.models.find(m => m.name === rep.best) || rep.models[0];
-  const keyMap = { Organic: 'o', Recyclable: 'r', Hazardous: 'h', 'Non-Recyclable': 'n' };
+  const keyMap = { Organic: 'o', Recyclable: 'r', 'E-waste': 'e', Hazardous: 'h', 'Non-Recyclable': 'n' };
 
   $('#pcm').innerHTML = Object.entries(best.per_class).map(([name, v]) => `
     <div class="pcm__group" data-s="${keyMap[name] || 'n'}">
@@ -605,6 +606,7 @@ function normalise(j) {
   const aliases = {
     'Organic':        ['Organic', 'organic', 'O'],
     'Recyclable':     ['Recyclable', 'recyclable', 'R'],
+    'E-waste':        ['E-waste', 'e-waste', 'E_waste', 'e_waste', 'E'],
     'Hazardous':      ['Hazardous', 'hazardous', 'H'],
     'Non-Recyclable': ['Non-Recyclable', 'non_recyclable', 'N'],
   };

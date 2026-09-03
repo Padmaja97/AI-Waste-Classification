@@ -23,7 +23,7 @@ from torchvision import datasets, models, transforms
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
-DIR_TO_NAME = {"H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Recyclable"}
+DIR_TO_NAME = {"E": "E-waste", "H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Recyclable"}
 CLASS_NAMES = ["Organic", "Recyclable"]
 
 

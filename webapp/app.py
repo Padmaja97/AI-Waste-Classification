@@ -42,7 +42,7 @@ from metrics_routes import register_metrics
 register_metrics(app, outputs_dir=OUTPUTS_DIR)
 
 # ── class config ───────────────────────────────────────────────────
-DIR_TO_NAME = {"H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Recyclable"}
+DIR_TO_NAME = {"E": "E-waste", "H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Recyclable"}
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"}
 

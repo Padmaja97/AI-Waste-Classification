@@ -1,11 +1,11 @@
 """Merge multiple waste-classification datasets into one TRAIN/TEST structure.
 
-Five additional Kaggle datasets are pre-configured with class mappings
-to Organic (O) / Recyclable (R).  Download them, extract into
-extra_datasets/<name>/, and run this script.
+Supports 2-class (O/R), 4-class (H/N/O/R), or 5-class (E/H/N/O/R) output.
+Download datasets from Kaggle, extract into extra_datasets/<name>/, and run.
 
 Usage:
-    python -m src.merge_datasets                  # merge all found datasets
+    python -m src.merge_datasets                  # merge all found datasets (5-class)
+    python -m src.merge_datasets --classes 4      # merge as 4-class (E→H)
     python -m src.merge_datasets --dry-run        # preview what would happen
     python -m src.merge_datasets --list           # show dataset registry
 """
@@ -26,17 +26,18 @@ from dataclasses import dataclass, field
 ORGANIC = "O"
 RECYCLABLE = "R"
 HAZARDOUS = "H"
+E_WASTE = "E"
 NON_RECYCLABLE = "N"
 SKIP = None  # ambiguous items excluded in 2-class mode
 
-# 4-class universal map — nothing is skipped
-UNIVERSAL_MAP_4: dict[str, str] = {
-    # organic / wet
+# 5-class universal map — the most granular
+UNIVERSAL_MAP_5: dict[str, str] = {
+    # organic / biodegradable
     "o": ORGANIC, "O": ORGANIC, "organic": ORGANIC, "Organic": ORGANIC,
     "biological": ORGANIC, "food_waste": ORGANIC, "food": ORGANIC,
     "Food_Organics": ORGANIC, "food_organics": ORGANIC,
     "Vegetation": ORGANIC, "vegetation": ORGANIC,
-    # recyclable / dry
+    # recyclable
     "r": RECYCLABLE, "R": RECYCLABLE, "recyclable": RECYCLABLE, "Recyclable": RECYCLABLE,
     "paper": RECYCLABLE, "Paper": RECYCLABLE,
     "cardboard": RECYCLABLE, "Cardboard": RECYCLABLE,
@@ -46,9 +47,26 @@ UNIVERSAL_MAP_4: dict[str, str] = {
     "brown-glass": RECYCLABLE, "green-glass": RECYCLABLE, "white-glass": RECYCLABLE,
     "aluminum": RECYCLABLE, "tin": RECYCLABLE,
     # hazardous
-    "battery": HAZARDOUS, "Battery": HAZARDOUS,
-    "electronics": HAZARDOUS,
-    # non-recyclable (not biodegradable, not recyclable)
+    "battery": HAZARDOUS, "Battery": HAZARDOUS, "batteries": HAZARDOUS,
+    "Batteries": HAZARDOUS, "chemicals": HAZARDOUS,
+    # e-waste (electronics)
+    "computer": E_WASTE, "Computer": E_WASTE, "computers": E_WASTE,
+    "keyboard": E_WASTE, "Keyboard": E_WASTE, "keyboards": E_WASTE,
+    "mouse": E_WASTE, "Mouse": E_WASTE, "mice": E_WASTE, "Mice": E_WASTE,
+    "mobile": E_WASTE, "Mobile": E_WASTE, "mobiles": E_WASTE, "Mobiles": E_WASTE,
+    "phone": E_WASTE, "Phone": E_WASTE, "phones": E_WASTE,
+    "printer": E_WASTE, "Printer": E_WASTE, "printers": E_WASTE,
+    "television": E_WASTE, "Television": E_WASTE, "TV": E_WASTE,
+    "PCB": E_WASTE, "pcb": E_WASTE, "PCBs": E_WASTE,
+    "microwave": E_WASTE, "Microwave": E_WASTE, "microwaves": E_WASTE,
+    "washing_machine": E_WASTE, "WashingMachine": E_WASTE,
+    "speaker": E_WASTE, "Speaker": E_WASTE, "speakers": E_WASTE,
+    "player": E_WASTE, "Player": E_WASTE,
+    "electronics": E_WASTE, "Electronics": E_WASTE,
+    "laptop": E_WASTE, "Laptop": E_WASTE,
+    "monitor": E_WASTE, "Monitor": E_WASTE,
+    "cable": E_WASTE, "Cable": E_WASTE, "wires": E_WASTE,
+    # non-recyclable
     "clothes": NON_RECYCLABLE, "Clothes": NON_RECYCLABLE,
     "shoes": NON_RECYCLABLE, "Shoes": NON_RECYCLABLE,
     "Textile": NON_RECYCLABLE, "textile": NON_RECYCLABLE,
@@ -56,13 +74,17 @@ UNIVERSAL_MAP_4: dict[str, str] = {
     "Miscellaneous": NON_RECYCLABLE, "miscellaneous": NON_RECYCLABLE,
 }
 
-# 2-class map — hazardous and non-recyclable are skipped
-UNIVERSAL_MAP_2: dict[str, str | None] = {
-    k: (v if v in (ORGANIC, RECYCLABLE) else SKIP)
-    for k, v in UNIVERSAL_MAP_4.items()
+# 4-class: merge E-waste into Hazardous
+UNIVERSAL_MAP_4: dict[str, str] = {
+    k: (HAZARDOUS if v == E_WASTE else v) for k, v in UNIVERSAL_MAP_5.items()
 }
 
-UNIVERSAL_MAP = UNIVERSAL_MAP_2  # default
+# 2-class: keep only O and R
+UNIVERSAL_MAP_2: dict[str, str | None] = {
+    k: (v if v in (ORGANIC, RECYCLABLE) else SKIP) for k, v in UNIVERSAL_MAP_5.items()
+}
+
+UNIVERSAL_MAP = UNIVERSAL_MAP_5  # default
 
 
 @dataclass
@@ -76,6 +98,7 @@ class DatasetInfo:
     images_dir: str = ""  # for datasets without train/test split
     class_map: dict[str, str | None] = field(default_factory=dict)
     class_map_4: dict[str, str | None] = field(default_factory=dict)
+    class_map_5: dict[str, str | None] = field(default_factory=dict)
 
 
 # ── dataset registry ─────────────────────────────────────────────────────
@@ -96,6 +119,11 @@ DATASETS: dict[str, DatasetInfo] = {
             "metal": RECYCLABLE, "paper": RECYCLABLE,
             "plastic": RECYCLABLE, "trash": NON_RECYCLABLE,
         },
+        class_map_5={
+            "cardboard": RECYCLABLE, "glass": RECYCLABLE,
+            "metal": RECYCLABLE, "paper": RECYCLABLE,
+            "plastic": RECYCLABLE, "trash": NON_RECYCLABLE,
+        },
     ),
     "garbage12": DatasetInfo(
         name="Garbage Classification (12-class)",
@@ -111,6 +139,16 @@ DATASETS: dict[str, DatasetInfo] = {
             "battery": SKIP, "clothes": SKIP, "shoes": SKIP,
         },
         class_map_4={
+            "biological": ORGANIC,
+            "cardboard": RECYCLABLE, "brown-glass": RECYCLABLE,
+            "green-glass": RECYCLABLE, "white-glass": RECYCLABLE,
+            "metal": RECYCLABLE, "paper": RECYCLABLE,
+            "plastic": RECYCLABLE,
+            "battery": HAZARDOUS,
+            "clothes": NON_RECYCLABLE, "shoes": NON_RECYCLABLE,
+            "trash": NON_RECYCLABLE,
+        },
+        class_map_5={
             "biological": ORGANIC,
             "cardboard": RECYCLABLE, "brown-glass": RECYCLABLE,
             "green-glass": RECYCLABLE, "white-glass": RECYCLABLE,
@@ -140,6 +178,13 @@ DATASETS: dict[str, DatasetInfo] = {
             "Plastic": RECYCLABLE,
             "Miscellaneous": NON_RECYCLABLE, "Textile": NON_RECYCLABLE,
         },
+        class_map_5={
+            "Food_Organics": ORGANIC, "Vegetation": ORGANIC,
+            "Cardboard": RECYCLABLE, "Glass": RECYCLABLE,
+            "Metal": RECYCLABLE, "Paper": RECYCLABLE,
+            "Plastic": RECYCLABLE,
+            "Miscellaneous": NON_RECYCLABLE, "Textile": NON_RECYCLABLE,
+        },
     ),
     "waste_v2": DatasetInfo(
         name="Waste Classification v2",
@@ -150,6 +195,7 @@ DATASETS: dict[str, DatasetInfo] = {
         test_dir="TEST",
         class_map={"O": ORGANIC, "R": RECYCLABLE},
         class_map_4={"O": ORGANIC, "R": RECYCLABLE},
+        class_map_5={"O": ORGANIC, "R": RECYCLABLE},
     ),
     "household": DatasetInfo(
         name="Household Waste (6-class)",
@@ -166,6 +212,59 @@ DATASETS: dict[str, DatasetInfo] = {
             "metal": RECYCLABLE, "paper": RECYCLABLE,
             "plastic": RECYCLABLE, "trash": NON_RECYCLABLE,
         },
+        class_map_5={
+            "cardboard": RECYCLABLE, "glass": RECYCLABLE,
+            "metal": RECYCLABLE, "paper": RECYCLABLE,
+            "plastic": RECYCLABLE, "trash": NON_RECYCLABLE,
+        },
+    ),
+    "ewaste1": DatasetInfo(
+        name="E-Waste Image Dataset",
+        slug="akshat103/e-waste-image-dataset",
+        desc="~3,600 images: batteries, computers, keyboards, mice, mobiles, printers, TVs, PCBs, microwaves, washing machines, speakers, player devices",
+        images_dir="",
+        class_map={
+            "batteries": SKIP, "computer": SKIP, "keyboard": SKIP,
+            "mouse": SKIP, "mobile": SKIP, "printer": SKIP,
+            "television": SKIP, "PCB": SKIP, "microwave": SKIP,
+            "washing_machine": SKIP, "speaker": SKIP, "player": SKIP,
+        },
+        class_map_4={
+            "batteries": HAZARDOUS, "computer": HAZARDOUS, "keyboard": HAZARDOUS,
+            "mouse": HAZARDOUS, "mobile": HAZARDOUS, "printer": HAZARDOUS,
+            "television": HAZARDOUS, "PCB": HAZARDOUS, "microwave": HAZARDOUS,
+            "washing_machine": HAZARDOUS, "speaker": HAZARDOUS, "player": HAZARDOUS,
+        },
+        class_map_5={
+            "batteries": HAZARDOUS, "computer": E_WASTE, "keyboard": E_WASTE,
+            "mouse": E_WASTE, "mobile": E_WASTE, "printer": E_WASTE,
+            "television": E_WASTE, "PCB": E_WASTE, "microwave": E_WASTE,
+            "washing_machine": E_WASTE, "speaker": E_WASTE, "player": E_WASTE,
+        },
+    ),
+    "ewaste2": DatasetInfo(
+        name="E-Waste Dataset",
+        slug="kaustubh2402/ewaste-dataset",
+        desc="E-waste images across multiple electronic device categories",
+        images_dir="",
+        class_map={},
+        class_map_4={},
+        class_map_5={},
+    ),
+    "wastecls": DatasetInfo(
+        name="Waste Classification (30K+)",
+        slug="phenomsg/waste-classification",
+        desc="~30,000 images across multiple waste categories",
+        images_dir="",
+        class_map={
+            "organic": ORGANIC, "recyclable": RECYCLABLE,
+        },
+        class_map_4={
+            "organic": ORGANIC, "recyclable": RECYCLABLE,
+        },
+        class_map_5={
+            "organic": ORGANIC, "recyclable": RECYCLABLE,
+        },
     ),
 }
 
@@ -178,7 +277,7 @@ def _list_images(folder: str) -> list[str]:
     return [f for f in os.listdir(folder) if os.path.splitext(f)[1].lower() in IMAGE_EXTS]
 
 
-ALL_VALID = {ORGANIC, RECYCLABLE, HAZARDOUS, NON_RECYCLABLE}
+ALL_VALID = {ORGANIC, RECYCLABLE, HAZARDOUS, E_WASTE, NON_RECYCLABLE}
 
 
 def _find_class_dirs(
@@ -200,14 +299,30 @@ def _find_class_dirs(
     return found
 
 
+def _extract_zips(base: str) -> None:
+    if not os.path.isdir(base):
+        return
+    for f in os.listdir(base):
+        if not f.lower().endswith(".zip"):
+            continue
+        zp = os.path.join(base, f)
+        try:
+            with zipfile.ZipFile(zp, "r") as z:
+                z.extractall(base)
+            print(f"  Extracted {f}")
+        except Exception as e:
+            print(f"  Could not extract {f}: {e}")
+
+
 def _auto_find_root(base: str, ds: DatasetInfo) -> str | None:
+    _extract_zips(base)
     if ds.images_dir:
         candidate = os.path.join(base, ds.images_dir)
         if os.path.isdir(candidate):
             return candidate
     if os.path.isdir(base):
         entries = os.listdir(base)
-        known_classes = set(ds.class_map.keys()) | set(ds.class_map_4.keys())
+        known_classes = set(ds.class_map.keys()) | set(ds.class_map_4.keys()) | set(ds.class_map_5.keys())
         if known_classes & set(entries):
             return base
         for e in entries:
@@ -228,7 +343,12 @@ def merge(
     num_classes: int = 2,
 ) -> dict[str, int]:
     rng = random.Random(seed)
-    all_classes = ["O", "R"] if num_classes == 2 else ["H", "N", "O", "R"]
+    if num_classes == 2:
+        all_classes = ["O", "R"]
+    elif num_classes == 4:
+        all_classes = ["H", "N", "O", "R"]
+    else:
+        all_classes = ["E", "H", "N", "O", "R"]
     train_dirs = {c: os.path.join(target_dir, "TRAIN", c) for c in all_classes}
     test_dirs = {c: os.path.join(target_dir, "TEST", c) for c in all_classes}
 
@@ -246,7 +366,12 @@ def merge(
         if not os.path.isdir(ds_dir):
             continue
 
-        cmap = ds_info.class_map_4 if num_classes == 4 else ds_info.class_map
+        if num_classes == 5:
+            cmap = ds_info.class_map_5
+        elif num_classes == 4:
+            cmap = ds_info.class_map_4
+        else:
+            cmap = ds_info.class_map
         print(f"\n{'[DRY RUN] ' if dry_run else ''}Processing: {ds_info.name} ({ds_key}/)")
         added = 0
 
@@ -302,11 +427,16 @@ def merge(
     return stats
 
 
-DIR_LABELS = {"H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Recyclable"}
+DIR_LABELS = {"E": "E-waste", "H": "Hazardous", "N": "Non-Recyclable", "O": "Organic", "R": "Recyclable"}
 
 
-def show_counts(dataset_dir: str, num_classes: int = 2) -> None:
-    classes = ["O", "R"] if num_classes == 2 else ["H", "N", "O", "R"]
+def show_counts(dataset_dir: str, num_classes: int = 5) -> None:
+    if num_classes == 2:
+        classes = ["O", "R"]
+    elif num_classes == 4:
+        classes = ["H", "N", "O", "R"]
+    else:
+        classes = ["E", "H", "N", "O", "R"]
     print("\nCurrent dataset counts:")
     for split in ("TRAIN", "TEST"):
         for cls in classes:
@@ -321,8 +451,8 @@ def main() -> None:
                     help="Folder containing downloaded dataset subfolders")
     ap.add_argument("--target-dir", default="./dataset/DATASET",
                     help="Target dataset directory with TRAIN/TEST structure")
-    ap.add_argument("--classes", type=int, choices=[2, 4], default=4,
-                    help="Number of output classes (2=O/R, 4=H/N/O/R)")
+    ap.add_argument("--classes", type=int, choices=[2, 4, 5], default=5,
+                    help="Number of output classes (2=O/R, 4=H/N/O/R, 5=E/H/N/O/R)")
     ap.add_argument("--dry-run", action="store_true",
                     help="Preview what would happen without copying")
     ap.add_argument("--list", action="store_true",
@@ -334,12 +464,12 @@ def main() -> None:
     nc = args.classes
 
     if args.list:
-        label = "4-class (H/N/O/R)" if nc == 4 else "2-class (O/R)"
+        label = {2: "2-class (O/R)", 4: "4-class (H/N/O/R)", 5: "5-class (E/H/N/O/R)"}[nc]
         print("=" * 65)
         print(f"Dataset Registry [{label}] — download from Kaggle, extract into extra_datasets/<key>/")
         print("=" * 65)
         for key, ds in DATASETS.items():
-            cmap = ds.class_map_4 if nc == 4 else ds.class_map
+            cmap = ds.class_map_5 if nc == 5 else (ds.class_map_4 if nc == 4 else ds.class_map)
             print(f"\n  {key}/")
             print(f"    {ds.name}")
             print(f"    Kaggle: kaggle datasets download -d {ds.slug}")
@@ -358,7 +488,7 @@ def main() -> None:
         show_counts(args.target_dir, nc)
         return
 
-    class_label = "H / N / O / R" if nc == 4 else "Organic / Recyclable"
+    class_label = {2: "Organic / Recyclable", 4: "H / N / O / R", 5: "E / H / N / O / R"}[nc]
     print("=" * 60)
     print(f"Multi-Dataset Merger — {class_label}")
     print("=" * 60)

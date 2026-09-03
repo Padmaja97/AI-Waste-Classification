@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>EcoSort AI — Inspection Line</title>
-<meta name="description" content="Two-class deep-learning inspection line that sorts municipal solid waste into wet and dry streams, with Grad-CAM explainability.">
+<meta name="description" content="Five-class deep-learning inspection line that classifies municipal solid waste into Organic, Recyclable, E-waste, Hazardous, and Non-Recyclable streams, with Grad-CAM explainability.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
@@ -58,8 +58,10 @@
     <p class="hero__lede">
       India generates about 62 million tonnes of municipal solid waste a year<sup class="cite"><a href="#refs">1</a></sup>,
       and the sorting still happens by hand. EcoSort is an inspection line: it looks at an item,
-      decides <strong class="t-o">wet</strong> or <strong class="t-r">dry</strong>, and shows you exactly
-      which pixels made it decide.
+      classifies it into one of five streams — <strong class="t-o">Organic</strong>,
+      <strong class="t-r">Recyclable</strong>, <strong class="t-e">E-waste</strong>,
+      <strong class="t-h">Hazardous</strong>, or <strong class="t-n">Non-Recyclable</strong> —
+      and shows you exactly which pixels made it decide.
     </p>
 
     <!-- scope is stated up front, not buried -->
@@ -67,8 +69,8 @@
       <span class="scope__n mono" id="scopeN">2</span>
       <span class="scope__t">
         waste categories — <b class="t-o">Organic</b>, <b class="t-r">Recyclable</b>,
-        <b class="t-h">Hazardous</b>, and <b class="t-n">Non-Recyclable</b>.
-        Mapped to Swachh Bharat bin colours: green, blue, red, and black.
+        <b class="t-e">E-waste</b>, <b class="t-h">Hazardous</b>, and <b class="t-n">Non-Recyclable</b>.
+        Mapped to Swachh Bharat bin colours and separate collection rules.
       </span>
     </p>
 
@@ -120,8 +122,8 @@
     <header class="sec__head">
       <h2>Put something on the belt.</h2>
       <p>Drop an image, paste from your clipboard, or use the camera. The model classifies waste
-         into Organic, Recyclable, or Non-Recyclable streams with a confidence score and a
-         Grad-CAM heat map of the pixels that drove the decision.</p>
+         into Organic, Recyclable, E-waste, Hazardous, or Non-Recyclable streams with a confidence
+         score and a Grad-CAM heat map of the pixels that drove the decision.</p>
     </header>
 
     <div class="bay">
@@ -164,9 +166,9 @@
         </div>
 
         <p class="intake__note">
-          The model was trained on the Kaggle waste-classification set. Items unlike that data —
-          e-waste, batteries, sanitary or medical waste — will still be forced into one of the two
-          classes. Treat those results as meaningless.
+          The model was trained on multiple Kaggle waste datasets covering organic, recyclable,
+          e-waste, hazardous, and non-recyclable items. Items very unlike the training data may
+          still be forced into the nearest class — verify unusual items before disposal.
         </p>
       </div>
 
@@ -174,7 +176,7 @@
       <div class="bay__verdict" id="verdictPane" data-state="idle">
 
         <div class="verdict__idle" id="verdictIdle">
-          <div class="idle__streams idle__streams--4">
+          <div class="idle__streams idle__streams--5">
             <div class="idle__stream" data-s="o">
               <span class="idle__pct">—</span>
               <span class="idle__name">Organic · wet</span>
@@ -182,6 +184,10 @@
             <div class="idle__stream" data-s="r">
               <span class="idle__pct">—</span>
               <span class="idle__name">Recyclable · dry</span>
+            </div>
+            <div class="idle__stream" data-s="e">
+              <span class="idle__pct">—</span>
+              <span class="idle__name">E-waste</span>
             </div>
             <div class="idle__stream" data-s="h">
               <span class="idle__pct">—</span>
@@ -507,15 +513,16 @@
   <div class="sec__body">
     <header class="sec__head">
       <h2>Which bin, and why.</h2>
-      <p>Swachh Bharat Mission fixes the colours nationally: green takes wet biodegradable waste,
-         blue takes dry recyclables. The model's two classes map onto them.</p>
+      <p>Swachh Bharat Mission fixes the bin colours nationally. The model's five classes map onto
+         green (organic), blue (recyclable), separate e-waste collection, red/separate (hazardous),
+         and black (non-recyclable).</p>
       <p class="sec__caveat">
-        The lists below are the municipal rules for people, not model outputs. EcoSort predicts only
-        <b>organic</b> or <b>recyclable</b> — it does not recognise these items individually.
+        The lists below are the municipal rules for people, not model outputs. EcoSort classifies
+        into five categories but cannot identify individual items within each.
       </p>
     </header>
 
-    <div class="bins bins--4">
+    <div class="bins bins--5">
       <article class="bin" data-s="o">
         <header class="bin__head">
           <span class="bin__chip">Green bin</span>
@@ -550,6 +557,23 @@
         <p class="bin__rule"><b>Rule of thumb:</b> rinse it, dry it, then it is blue.</p>
       </article>
 
+      <article class="bin" data-s="e">
+        <header class="bin__head">
+          <span class="bin__chip">E-waste collection</span>
+          <h3>Electronic waste</h3>
+          <p class="bin__sub">Separate collection · authorised e-waste recycler</p>
+        </header>
+        <ul class="bin__items">
+          <li>Mobile phones, chargers, earphones</li>
+          <li>Laptops, keyboards, mice</li>
+          <li>Televisions, monitors, speakers</li>
+          <li>Printers, microwaves, washing machines</li>
+          <li>PCBs, cables, circuit boards</li>
+          <li>Hard drives, USB devices, routers</li>
+        </ul>
+        <p class="bin__rule"><b>Rule of thumb:</b> if it has a circuit or a plug, it is e-waste.</p>
+      </article>
+
       <article class="bin" data-s="h">
         <header class="bin__head">
           <span class="bin__chip">Red / separate</span>
@@ -558,11 +582,11 @@
         </header>
         <ul class="bin__items">
           <li>Batteries (AA, lithium, car)</li>
-          <li>E-waste: phones, chargers, cables</li>
           <li>Tube lights, CFLs, LEDs</li>
           <li>Paints, solvents, pesticides</li>
           <li>Medicines, syringes, thermometers</li>
           <li>Motor oil, aerosol cans</li>
+          <li>Chemicals, cleaning agents</li>
         </ul>
         <p class="bin__rule"><b>Rule of thumb:</b> if it can leak, burn, or corrode, it is hazardous.</p>
       </article>
@@ -587,9 +611,9 @@
 
     <p class="guide__note">
       <span class="guide__warn" aria-hidden="true"></span>
-      EcoSort classifies into four categories but cannot identify individual items within each.
-      Always verify hazardous items before disposal — incorrect routing of batteries or chemicals
-      is a safety risk.
+      EcoSort classifies into five categories but cannot identify individual items within each.
+      Always verify hazardous and e-waste items before disposal — incorrect routing of batteries,
+      chemicals, or electronics is a safety risk.
     </p>
   </div>
 </section>
